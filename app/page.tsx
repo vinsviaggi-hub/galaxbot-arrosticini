@@ -18,7 +18,14 @@ const WHATSAPP_NUMBER = "390000000000";
 function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
-function buildSlots(startHH: number, startMM: number, endHH: number, endMM: number, stepMin = 15) {
+
+function buildSlots(
+  startHH: number,
+  startMM: number,
+  endHH: number,
+  endMM: number,
+  stepMin = 15
+) {
   const out: string[] = [];
   let t = startHH * 60 + startMM;
   const end = endHH * 60 + endMM;
@@ -53,7 +60,9 @@ export default function Page() {
   const [honeypot, setHoneypot] = useState("");
 
   // Stato submit
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">(
+    "idle"
+  );
   const [msg, setMsg] = useState("");
 
   const timeOptions = useMemo(() => {
@@ -75,7 +84,7 @@ export default function Page() {
     return parts.length ? parts.join(" · ") : "—";
   }, [scat50, scat100, scat200]);
 
-  // ✅ formato corto (da tabella)
+  // ✅ formato compatto (per tabella / sheet)
   const scatoleCompact = useMemo(() => {
     return `50:${scat50} | 100:${scat100} | 200:${scat200} | TOT:${totalArrosticini}`;
   }, [scat50, scat100, scat200, totalArrosticini]);
@@ -183,19 +192,18 @@ export default function Page() {
     }
   }
 
-  // ✅ Stili inline per “wow” e leggibilità SENZA toccare globals
+  // ✅ Background “wow”
   const bgStyle: React.CSSProperties = {
     backgroundImage:
-      "linear-gradient(180deg, rgba(6,10,18,.18), rgba(6,10,18,.40)), url('/bg-arrosticini-day.png')",
+      "linear-gradient(180deg, rgba(6,10,18,.12), rgba(6,10,18,.42)), url('/bg-arrosticini-day.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
-    backgroundAttachment: "fixed",
   };
 
   const heroStyle: React.CSSProperties = {
     background:
-      "linear-gradient(180deg, rgba(10,14,22,.92), rgba(10,14,22,.78))",
+      "linear-gradient(180deg, rgba(10,14,22,.94), rgba(10,14,22,.80))",
     border: "1px solid rgba(255,255,255,.18)",
   };
 
@@ -228,7 +236,10 @@ export default function Page() {
 
             <div className="heroRight">
               <div className="heroTitleWrap">
-                <h1 className="heroTitle" style={{ textShadow: "0 10px 30px rgba(0,0,0,.55)" }}>
+                <h1
+                  className="heroTitle"
+                  style={{ textShadow: "0 10px 30px rgba(0,0,0,.55)" }}
+                >
                   {BRAND_NAME}
                 </h1>
                 <p className="heroTag">{TAGLINE}</p>
@@ -284,7 +295,9 @@ export default function Page() {
             <div className="cardInner">
               <div className="sectionHead">
                 <h2 className="sectionTitle">Prenota scatole</h2>
-                <p className="sectionSub">Ritiro o consegna · Data e ora vicine · Totale automatico.</p>
+                <p className="sectionSub">
+                  Ritiro o consegna · Data e ora vicine · Totale automatico.
+                </p>
               </div>
 
               <form onSubmit={onSubmit} className="formStack">
@@ -325,7 +338,9 @@ export default function Page() {
                     <select
                       className="select"
                       value={fulfillment}
-                      onChange={(e) => setFulfillment(e.target.value as Fulfillment)}
+                      onChange={(e) =>
+                        setFulfillment(e.target.value as Fulfillment)
+                      }
                     >
                       <option value="RITIRO">Ritiro</option>
                       <option value="CONSEGNA">Consegna</option>
@@ -335,6 +350,7 @@ export default function Page() {
                   {/* ✅ Data e ora vicine */}
                   <div className="field full">
                     <div className="label">Data e ora</div>
+
                     <div
                       style={{
                         display: "grid",
@@ -355,7 +371,9 @@ export default function Page() {
                         onChange={(e) => setOra(e.target.value)}
                         disabled={!data}
                       >
-                        <option value="">{data ? "Seleziona un orario" : "Scegli prima la data"}</option>
+                        <option value="">
+                          {data ? "Seleziona un orario" : "Scegli prima la data"}
+                        </option>
                         {timeOptions.map((t) =>
                           t.startsWith("—") ? (
                             <option key={t} value={t} disabled>
@@ -369,7 +387,10 @@ export default function Page() {
                         )}
                       </select>
                     </div>
-                    <div className="hint">Se non trovi l’orario, scrivilo nelle note.</div>
+
+                    <div className="hint">
+                      Se non trovi l’orario, scrivilo nelle note.
+                    </div>
                   </div>
 
                   {needsAddress && (
@@ -386,58 +407,106 @@ export default function Page() {
                 </div>
 
                 {/* Scatole */}
-                <div className="boxesWrap" style={{ background: "rgba(255,255,255,.05)" }}>
+                <div
+                  className="boxesWrap"
+                  style={{ background: "rgba(255,255,255,.05)" }}
+                >
                   <div className="boxesHead">
                     <div>
                       <div className="label">Scatole</div>
-                      <div className="mini">Scegli quantità: 50 / 100 / 200 arrosticini</div>
+                      <div className="mini">
+                        Scegli quantità: 50 / 100 / 200 arrosticini
+                      </div>
                       <div className="mini" style={{ marginTop: 6 }}>
                         <b>Riepilogo rapido:</b> {scatoleCompact}
                       </div>
                     </div>
-                    <div className="totalPill" style={{ background: "rgba(255,255,255,.10)" }}>
+
+                    <div
+                      className="totalPill"
+                      style={{ background: "rgba(255,255,255,.10)" }}
+                    >
                       Totale: <b>{totalArrosticini}</b>
                     </div>
                   </div>
 
                   <div className="boxesGrid">
-                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
+                    <div
+                      className="boxCard"
+                      style={{ background: "rgba(10,12,18,.55)" }}
+                    >
                       <div className="boxTitle">Scatola 50</div>
                       <div className="boxSub">50 arrosticini</div>
                       <div className="stepper">
-                        <button type="button" className="stepBtn" onClick={() => dec(setScat50, scat50)} aria-label="Meno 50">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => dec(setScat50, scat50)}
+                          aria-label="Meno 50"
+                        >
                           −
                         </button>
                         <div className="stepVal">{scat50}</div>
-                        <button type="button" className="stepBtn" onClick={() => inc(setScat50, scat50)} aria-label="Più 50">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => inc(setScat50, scat50)}
+                          aria-label="Più 50"
+                        >
                           +
                         </button>
                       </div>
                     </div>
 
-                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
+                    <div
+                      className="boxCard"
+                      style={{ background: "rgba(10,12,18,.55)" }}
+                    >
                       <div className="boxTitle">Scatola 100</div>
                       <div className="boxSub">100 arrosticini</div>
                       <div className="stepper">
-                        <button type="button" className="stepBtn" onClick={() => dec(setScat100, scat100)} aria-label="Meno 100">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => dec(setScat100, scat100)}
+                          aria-label="Meno 100"
+                        >
                           −
                         </button>
                         <div className="stepVal">{scat100}</div>
-                        <button type="button" className="stepBtn" onClick={() => inc(setScat100, scat100)} aria-label="Più 100">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => inc(setScat100, scat100)}
+                          aria-label="Più 100"
+                        >
                           +
                         </button>
                       </div>
                     </div>
 
-                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
+                    <div
+                      className="boxCard"
+                      style={{ background: "rgba(10,12,18,.55)" }}
+                    >
                       <div className="boxTitle">Scatola 200</div>
                       <div className="boxSub">200 arrosticini</div>
                       <div className="stepper">
-                        <button type="button" className="stepBtn" onClick={() => dec(setScat200, scat200)} aria-label="Meno 200">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => dec(setScat200, scat200)}
+                          aria-label="Meno 200"
+                        >
                           −
                         </button>
                         <div className="stepVal">{scat200}</div>
-                        <button type="button" className="stepBtn" onClick={() => inc(setScat200, scat200)} aria-label="Più 200">
+                        <button
+                          type="button"
+                          className="stepBtn"
+                          onClick={() => inc(setScat200, scat200)}
+                          aria-label="Più 200"
+                        >
                           +
                         </button>
                       </div>
@@ -474,7 +543,10 @@ export default function Page() {
                   <div className={`status ${status}`}>{msg || " "}</div>
                 </div>
 
-                <div className="legal">Inviando accetti che il laboratorio ti contatti per conferma disponibilità.</div>
+                <div className="legal">
+                  Inviando accetti che il laboratorio ti contatti per conferma
+                  disponibilità.
+                </div>
               </form>
             </div>
           </section>
@@ -484,10 +556,11 @@ export default function Page() {
             <div className="cardInner">
               <div className="sectionHead">
                 <h2 className="sectionTitle">Assistente</h2>
-                <p className="sectionSub">Orari, ritiro/consegna, come ordinare, info generali.</p>
+                <p className="sectionSub">
+                  Orari, ritiro/consegna, come ordinare, info generali.
+                </p>
               </div>
 
-              {/* ✅ messaggio chiaro (anche senza toccare il codice del bot) */}
               <div
                 style={{
                   marginBottom: 10,
@@ -500,13 +573,15 @@ export default function Page() {
                   fontWeight: 800,
                 }}
               >
-                Se vuoi <b>prenotare</b>: compila il <b>modulo a sinistra</b> (oppure vai su <b>“Prenota”</b>).
+                Se vuoi <b>prenotare</b>: compila il <b>modulo</b> (oppure vai su{" "}
+                <b>“Prenota”</b>).
               </div>
 
               <ChatBox />
 
               <div className="chatHint">
-                Tip: il bot serve a ridurre telefonate. Se manca un’informazione deve fare <b>1 domanda sola</b>.
+                Tip: il bot serve a ridurre telefonate. Se manca un’informazione
+                deve fare <b>1 domanda sola</b>.
               </div>
             </div>
           </section>
@@ -524,7 +599,13 @@ export default function Page() {
           >
             📞 Chiama
           </a>
-          <button className="stickyBtn primary" onClick={() => setTab(tab === "prenota" ? "assistente" : "prenota")}>
+
+          <button
+            className="stickyBtn primary"
+            onClick={() =>
+              setTab(tab === "prenota" ? "assistente" : "prenota")
+            }
+          >
             {tab === "prenota" ? "💬 Apri assistente" : "🧾 Torna a prenota"}
           </button>
         </div>
@@ -533,6 +614,122 @@ export default function Page() {
           <b>{BRAND_NAME}</b> · Prenotazioni scatole 50/100/200
         </footer>
       </div>
+
+      {/* ✅ FIX MOBILE: niente bottoni tagliati + tab veri + safe-area iPhone + bg senza “fixed” */}
+      <style jsx global>{`
+        .bgLayer {
+          position: fixed;
+          inset: 0;
+          z-index: -1;
+        }
+
+        /* Evita che la sticky bar copra il form */
+        .wrap {
+          padding-bottom: calc(84px + env(safe-area-inset-bottom));
+        }
+
+        /* Layout header più stabile */
+        .heroTop {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+        }
+        .heroRight {
+          flex: 1;
+          display: flex;
+          gap: 14px;
+          justify-content: space-between;
+          align-items: flex-start;
+          min-width: 0;
+        }
+        .heroTitleWrap {
+          min-width: 0;
+        }
+        .heroActions {
+          display: grid;
+          gap: 10px;
+          grid-auto-flow: row;
+        }
+
+        /* Mobile: tutto in colonna, bottoni larghi e non tagliati */
+        @media (max-width: 820px) {
+          .bgLayer {
+            position: absolute; /* iOS: più fluido */
+          }
+
+          .heroTop {
+            flex-direction: column;
+          }
+          .heroRight {
+            flex-direction: column;
+            width: 100%;
+          }
+          .heroActions {
+            width: 100%;
+            grid-template-columns: 1fr 1fr;
+          }
+          .btnGhost {
+            width: 100%;
+            justify-content: center;
+          }
+
+          .heroTitle {
+            font-size: 34px; /* meno enorme su iPhone */
+            line-height: 1.05;
+          }
+          .heroTag {
+            font-size: 14px;
+            opacity: 0.92;
+          }
+          .heroSub {
+            font-size: 13px;
+            opacity: 0.9;
+          }
+
+          /* Tab: mostra solo la sezione selezionata */
+          .mainGrid.prenota .chatCard {
+            display: none;
+          }
+          .mainGrid.assistente .orderCard {
+            display: none;
+          }
+
+          /* Data/ora: se lo schermo è stretto impila */
+          .field.full > div[style*="grid-template-columns"] {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* Sticky bar: safe-area e niente overflow */
+        .stickyBar {
+          position: fixed;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          padding: 12px;
+          padding-bottom: calc(12px + env(safe-area-inset-bottom));
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 12px;
+          background: rgba(0, 0, 0, 0.25);
+          backdrop-filter: blur(10px);
+          z-index: 50;
+        }
+        .stickyBtn {
+          border-radius: 16px;
+          padding: 14px 14px;
+          font-weight: 900;
+          text-align: center;
+          color: rgba(244, 246, 255, 0.95);
+          background: rgba(255, 255, 255, 0.1);
+          border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .stickyBtn.primary {
+          background: linear-gradient(90deg, #ff3b30, #ffcc00);
+          border: none;
+          color: rgba(16, 20, 30, 0.92);
+        }
+      `}</style>
     </div>
   );
 }
