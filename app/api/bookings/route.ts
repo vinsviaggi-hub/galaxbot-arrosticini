@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL;
+const GOOGLE_SCRIPT_SECRET = process.env.GOOGLE_SCRIPT_SECRET;
 
 export async function POST(req: Request) {
   try {
@@ -10,7 +11,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Body JSON mancante." }, { status: 400 });
     }
 
-    // Anti-spam: se honeypot è pieno, fingiamo OK ma non salviamo
+    // anti-spam
     if (typeof body.honeypot === "string" && body.honeypot.trim().length > 0) {
       return NextResponse.json({ ok: true, skipped: true });
     }
@@ -22,32 +23,42 @@ export async function POST(req: Request) {
       );
     }
 
-    // Timeout per evitare richieste bloccate
+    // ✅ inietto il secret qui
+    const payload = {
+      ...body,
+      ...(GOOGLE_SCRIPT_SECRET ? { secret: GOOGLE_SCRIPT_SECRET } : {}),
+    };
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
 
     const r = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
       signal: controller.signal,
+      redirect: "follow",
+      cache: "no-store",
     }).finally(() => clearTimeout(timeout));
 
     const text = await r.text();
 
-    // Google Script di solito risponde JSON; se non lo è lo metto in raw
     let data: any;
     try {
       data = JSON.parse(text);
     } catch {
-      data = { raw: text };
+      data = { ok: false, raw: text };
     }
 
-    // Se Apps Script risponde ok:false o HTTP non ok => errore
+    // se Apps Script dice ok:false o la fetch non è ok
     if (!r.ok || data?.ok === false) {
+      const status = data?.code === 401 ? 401 : 500;
       return NextResponse.json(
         { ok: false, error: data?.error || "Errore dal Google Script", detail: data },
-        { status: 500 }
+        { status }
       );
     }
 
@@ -62,5 +73,4 @@ export async function POST(req: Request) {
   }
 }
 
-// opzionale: evitare cache in edge/hosting
 export const dynamic = "force-dynamic";
