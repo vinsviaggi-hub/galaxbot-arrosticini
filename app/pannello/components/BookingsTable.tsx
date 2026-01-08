@@ -1,22 +1,54 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
+import styles from "../pannello.module.css";
 
 export type BookingRow = {
   nome: string;
   telefono: string;
-  ritiroConsegna: string;
-  data: string;
+  ritiroConsegna: string; // RITIRO | CONSEGNA
+  data: string; // YYYY-MM-DD (o già formattata)
   ora: string;
   scatola50: number;
   scatola100: number;
   scatola200: number;
   totaleArrosticini: number;
   indirizzo: string;
-  stato: string;
+  stato: string; // NUOVA | CONFERMATA | CONSEGNATA | ANNULLATA
   note: string;
   timestamp: string;
 };
+
+function toStr(v: any) {
+  return v === null || v === undefined ? "" : String(v);
+}
+
+function formatDateIT(value: string) {
+  const s = toStr(value).trim();
+  if (!s) return "";
+  // se è ISO (YYYY-MM-DD) lo converto
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  return s;
+}
+
+function badgeClass(kind: string) {
+  const up = (kind || "").toUpperCase();
+
+  // Stato
+  if (up === "CONFERMATA") return `${styles.badge} ${styles.badgeGreen}`;
+  if (up === "CONSEGNATA") return `${styles.badge} ${styles.badgeYellow}`;
+  if (up === "ANNULLATA") return `${styles.badge} ${styles.badgeRed}`;
+  if (up === "NUOVA") return `${styles.badge} ${styles.badgeBlue}`;
+
+  // Tipo (ritiro/consegna)
+  if (up === "CONSEGNA") return `${styles.badge} ${styles.badgePurple}`;
+  if (up === "RITIRO") return `${styles.badge} ${styles.badgeGray}`;
+
+  return `${styles.badge} ${styles.badgeGray}`;
+}
 
 export default function BookingsTable({ rows }: { rows: BookingRow[] }) {
   const [q, setQ] = useState("");
@@ -24,6 +56,7 @@ export default function BookingsTable({ rows }: { rows: BookingRow[] }) {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return rows;
+
     return rows.filter((r) =>
       [
         r.nome,
@@ -42,65 +75,72 @@ export default function BookingsTable({ rows }: { rows: BookingRow[] }) {
   }, [q, rows]);
 
   return (
-    <div
-      style={{
-        background: "rgba(10,14,22,.92)",
-        border: "1px solid rgba(255,255,255,.18)",
-        borderRadius: 16,
-        padding: 14,
-      }}
-    >
-      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Cerca: nome, tel, data, stato…"
-          style={{
-            flex: 1,
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,.18)",
-            background: "rgba(255,255,255,.06)",
-            color: "white",
-            outline: "none",
-          }}
-        />
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          {filtered.length}/{rows.length}
+    <>
+      {/* TOOLBAR */}
+      <div className={styles.card}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div className={styles.search} style={{ flex: 1, minWidth: 240 }}>
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Cerca: nome, tel, data, stato…"
+              className={styles.input}
+            />
+          </div>
+
+          <span className={`${styles.badge} ${styles.badgeGray}`}>
+            {filtered.length}/{rows.length}
+          </span>
         </div>
       </div>
 
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+      {/* DESKTOP TABLE */}
+      <div className={styles.tableWrap} aria-busy={rows.length === 0 ? "false" : "false"}>
+        <table className={styles.table}>
           <thead>
-            <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.9 }}>
-              {["Data", "Ora", "Nome", "Telefono", "Tipo", "50", "100", "200", "Tot", "Stato", "Indirizzo", "Note"].map((h) => (
-                <th key={h} style={{ padding: "10px 8px", borderBottom: "1px solid rgba(255,255,255,.12)" }}>
-                  {h}
-                </th>
-              ))}
+            <tr>
+              <th className={styles.th}>Data</th>
+              <th className={styles.th}>Ora</th>
+              <th className={styles.th}>Nome</th>
+              <th className={styles.th}>Telefono</th>
+              <th className={styles.th}>Tipo</th>
+              <th className={styles.th}>50</th>
+              <th className={styles.th}>100</th>
+              <th className={styles.th}>200</th>
+              <th className={styles.th}>Tot</th>
+              <th className={styles.th}>Stato</th>
+              <th className={styles.th}>Indirizzo</th>
+              <th className={styles.th}>Note</th>
             </tr>
           </thead>
+
           <tbody>
-            {filtered.map((r, i) => (
-              <tr key={r.timestamp + i} style={{ fontSize: 13 }}>
-                <td style={td}>{r.data}</td>
-                <td style={td}>{r.ora}</td>
-                <td style={td}><b>{r.nome}</b></td>
-                <td style={td}>{r.telefono}</td>
-                <td style={td}>{r.ritiroConsegna}</td>
-                <td style={td}>{r.scatola50}</td>
-                <td style={td}>{r.scatola100}</td>
-                <td style={td}>{r.scatola200}</td>
-                <td style={td}><b>{r.totaleArrosticini}</b></td>
-                <td style={td}>{r.stato}</td>
-                <td style={td}>{r.indirizzo}</td>
-                <td style={td}>{r.note}</td>
-              </tr>
-            ))}
-            {!filtered.length && (
-              <tr>
-                <td colSpan={12} style={{ ...td, padding: 14, opacity: 0.75 }}>
+            {filtered.length ? (
+              filtered.map((r, i) => (
+                <tr key={`${r.timestamp}-${i}`} className={styles.row}>
+                  <td className={`${styles.td} ${styles.mono}`}>{formatDateIT(r.data)}</td>
+                  <td className={`${styles.td} ${styles.mono}`}>{r.ora || "—"}</td>
+                  <td className={styles.tdName}>{r.nome || "—"}</td>
+                  <td className={`${styles.td} ${styles.mono}`}>{r.telefono || "—"}</td>
+                  <td className={styles.td}>
+                    <span className={badgeClass(r.ritiroConsegna)}>{(r.ritiroConsegna || "—").toUpperCase()}</span>
+                  </td>
+                  <td className={`${styles.td} ${styles.mono}`}>{r.scatola50 ?? 0}</td>
+                  <td className={`${styles.td} ${styles.mono}`}>{r.scatola100 ?? 0}</td>
+                  <td className={`${styles.td} ${styles.mono}`}>{r.scatola200 ?? 0}</td>
+                  <td className={`${styles.td} ${styles.mono} ${styles.tdTot}`}>
+                    <b>{r.totaleArrosticini ?? 0}</b>
+                  </td>
+                  <td className={styles.td}>
+                    <span className={badgeClass(r.stato)}>{(r.stato || "NUOVA").toUpperCase()}</span>
+                  </td>
+                  <td className={styles.tdWrap}>{r.indirizzo || "—"}</td>
+                  <td className={styles.tdWrap}>{r.note || "—"}</td>
+                </tr>
+              ))
+            ) : (
+              <tr className={styles.row}>
+                <td className={styles.td} colSpan={12} style={{ padding: 14, opacity: 0.8 }}>
                   Nessun risultato.
                 </td>
               </tr>
@@ -108,12 +148,62 @@ export default function BookingsTable({ rows }: { rows: BookingRow[] }) {
           </tbody>
         </table>
       </div>
-    </div>
+
+      {/* MOBILE CARDS */}
+      <div className={styles.mobileCards}>
+        {filtered.length ? (
+          filtered.map((r, i) => (
+            <div key={`${r.timestamp}-m-${i}`} className={styles.mCard}>
+              <div className={styles.mTop}>
+                <div>
+                  <p className={styles.mName}>{r.nome || "—"}</p>
+                  <p className={styles.mSub}>
+                    {formatDateIT(r.data)} • <b className={styles.mono}>{r.ora || "—"}</b> •{" "}
+                    <span className={styles.mono}>{r.telefono || "—"}</span>
+                  </p>
+                </div>
+
+                <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                  <span className={badgeClass(r.stato)}>{(r.stato || "NUOVA").toUpperCase()}</span>
+                  <span className={badgeClass(r.ritiroConsegna)}>{(r.ritiroConsegna || "—").toUpperCase()}</span>
+                </div>
+              </div>
+
+              <div className={styles.mGrid}>
+                <div className={styles.mBox}>
+                  <p className={styles.mBoxLabel}>Scatole</p>
+                  <p className={styles.mBoxValue}>
+                    50: {r.scatola50 ?? 0} • 100: {r.scatola100 ?? 0} • 200: {r.scatola200 ?? 0}
+                  </p>
+                </div>
+
+                <div className={styles.mBox}>
+                  <p className={styles.mBoxLabel}>Totale</p>
+                  <p className={styles.mBoxValue}>
+                    <b>{r.totaleArrosticini ?? 0}</b>
+                  </p>
+                </div>
+
+                <div className={styles.mBox} style={mFull}>
+                  <p className={styles.mBoxLabel}>Indirizzo</p>
+                  <p className={styles.mBoxValue}>{r.indirizzo || "—"}</p>
+                </div>
+
+                <div className={styles.mBox} style={mFull}>
+                  <p className={styles.mBoxLabel}>Note</p>
+                  <p className={styles.mBoxValue}>{r.note || "—"}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className={styles.mCard} style={{ opacity: 0.85 }}>
+            Nessun risultato.
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
-const td: React.CSSProperties = {
-  padding: "10px 8px",
-  borderBottom: "1px solid rgba(255,255,255,.08)",
-  verticalAlign: "top",
-};
+const mFull: CSSProperties = { gridColumn: "1 / -1" };

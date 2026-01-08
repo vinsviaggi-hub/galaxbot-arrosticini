@@ -1,31 +1,20 @@
 "use client";
 
-import React, { useMemo, useState, type FormEvent } from "react";
+import React, { useMemo, useRef, useState, type FormEvent } from "react";
 import ChatBox from "./components/chatbox";
 
 type Fulfillment = "RITIRO" | "CONSEGNA";
 
 const BRAND_NAME = "Arrosticini Abruzzesi";
-const TAGLINE = "Prenota in 20 secondi · Scatole da 50 / 100 / 200";
-const SUBLINE = "Scegli scatole, data e orario. Prezzi li inseriamo dopo.";
+// ✅ tolto “Prenota in 20 secondi…”
+const TAGLINE = "Scatole da 50 / 100 / 200";
 const DEFAULT_STATUS = "NUOVA";
-
-// ✅ METTI QUI IL NUMERO VERO (formato +39...)
-const PHONE_NUMBER = "+390000000000";
-// ✅ WhatsApp: solo numeri, senza +
-const WHATSAPP_NUMBER = "390000000000";
 
 function pad2(n: number) {
   return n.toString().padStart(2, "0");
 }
 
-function buildSlots(
-  startHH: number,
-  startMM: number,
-  endHH: number,
-  endMM: number,
-  stepMin = 15
-) {
+function buildSlots(startHH: number, startMM: number, endHH: number, endMM: number, stepMin = 15) {
   const out: string[] = [];
   let t = startHH * 60 + startMM;
   const end = endHH * 60 + endMM;
@@ -39,8 +28,33 @@ function buildSlots(
 }
 
 export default function Page() {
-  // Tabs (mobile)
-  const [tab, setTab] = useState<"prenota" | "assistente">("prenota");
+  // ✅ chat nascosta finché non clicca
+  const [assistantOpen, setAssistantOpen] = useState(false);
+
+  // Ref per scroll sulla chat quando si apre
+  const assistantRef = useRef<HTMLElement | null>(null);
+
+  function openAssistant() {
+    setAssistantOpen(true);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          assistantRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch {}
+      }, 50);
+    });
+  }
+
+  function closeAssistant() {
+    setAssistantOpen(false);
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        try {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } catch {}
+      }, 50);
+    });
+  }
 
   // Form
   const [nome, setNome] = useState("");
@@ -60,9 +74,7 @@ export default function Page() {
   const [honeypot, setHoneypot] = useState("");
 
   // Stato submit
-  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">(
-    "idle"
-  );
+  const [status, setStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [msg, setMsg] = useState("");
 
   const timeOptions = useMemo(() => {
@@ -71,10 +83,7 @@ export default function Page() {
     return ["— Mattina —", ...morning, "— Pomeriggio —", ...afternoon];
   }, []);
 
-  const totalArrosticini = useMemo(
-    () => scat50 * 50 + scat100 * 100 + scat200 * 200,
-    [scat50, scat100, scat200]
-  );
+  const totalArrosticini = useMemo(() => scat50 * 50 + scat100 * 100 + scat200 * 200, [scat50, scat100, scat200]);
 
   const scatoleLabel = useMemo(() => {
     const parts: string[] = [];
@@ -84,7 +93,6 @@ export default function Page() {
     return parts.length ? parts.join(" · ") : "—";
   }, [scat50, scat100, scat200]);
 
-  // ✅ formato compatto (per tabella / sheet)
   const scatoleCompact = useMemo(() => {
     return `50:${scat50} | 100:${scat100} | 200:${scat200} | TOT:${totalArrosticini}`;
   }, [scat50, scat100, scat200, totalArrosticini]);
@@ -136,7 +144,6 @@ export default function Page() {
       nome: cleanNome,
       telefono: cleanTel,
 
-      // compatibilità
       tipo: fulfillment,
       ritiroConsegna: fulfillment,
 
@@ -192,29 +199,22 @@ export default function Page() {
     }
   }
 
-  // ✅ Background “wow”
+  // Background
   const bgStyle: React.CSSProperties = {
-    backgroundImage:
-      "linear-gradient(180deg, rgba(6,10,18,.12), rgba(6,10,18,.42)), url('/bg-arrosticini-day.png')",
+    backgroundImage: "linear-gradient(180deg, rgba(6,10,18,.12), rgba(6,10,18,.42)), url('/bg-arrosticini-day.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
     backgroundRepeat: "no-repeat",
   };
 
   const heroStyle: React.CSSProperties = {
-    background:
-      "linear-gradient(180deg, rgba(10,14,22,.94), rgba(10,14,22,.80))",
+    background: "linear-gradient(180deg, rgba(10,14,22,.94), rgba(10,14,22,.80))",
     border: "1px solid rgba(255,255,255,.18)",
   };
 
   const cardStyle: React.CSSProperties = {
     background: "rgba(10,14,22,.88)",
     border: "1px solid rgba(255,255,255,.18)",
-  };
-
-  const greenBtn: React.CSSProperties = {
-    background: "rgba(34,197,94,.18)",
-    border: "1px solid rgba(34,197,94,.45)",
   };
 
   return (
@@ -236,68 +236,31 @@ export default function Page() {
 
             <div className="heroRight">
               <div className="heroTitleWrap">
-                <h1
-                  className="heroTitle"
-                  style={{ textShadow: "0 10px 30px rgba(0,0,0,.55)" }}
-                >
+                <h1 className="heroTitle" style={{ textShadow: "0 10px 30px rgba(0,0,0,.55)" }}>
                   {BRAND_NAME}
                 </h1>
                 <p className="heroTag">{TAGLINE}</p>
-                <p className="heroSub">{SUBLINE}</p>
               </div>
 
-              <div className="heroActions">
-                <a
-                  className="btnGhost"
-                  style={greenBtn}
-                  href={`tel:${PHONE_NUMBER}`}
-                  aria-label="Chiama"
-                >
-                  📞 Chiama
-                </a>
-                <a
-                  className="btnGhost"
-                  style={greenBtn}
-                  href={`https://wa.me/${WHATSAPP_NUMBER}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  aria-label="WhatsApp"
-                >
-                  💬 WhatsApp
-                </a>
-              </div>
+              {/* ✅ tolti Chiama e WhatsApp */}
+              <div className="heroActionsHidden" />
             </div>
           </div>
 
           <div className="heroBar" />
 
-          <div className="tabs">
-            <button
-              type="button"
-              className={`tabBtn ${tab === "prenota" ? "active" : ""}`}
-              onClick={() => setTab("prenota")}
-            >
-              Prenota
-            </button>
-            <button
-              type="button"
-              className={`tabBtn ${tab === "assistente" ? "active" : ""}`}
-              onClick={() => setTab("assistente")}
-            >
-              Assistente
-            </button>
-          </div>
+          {/* ✅ tolte le tab Prenota / Assistente */}
+          <div className="tabsHidden" />
         </header>
 
-        <main className={`mainGrid ${tab}`}>
+        {/* ✅ layout cambia solo quando assistenza è aperta */}
+        <main className={`mainGrid ${assistantOpen ? "assistOpen" : "assistClosed"}`}>
           {/* PRENOTA */}
           <section className="card orderCard" style={cardStyle}>
             <div className="cardInner">
               <div className="sectionHead">
                 <h2 className="sectionTitle">Prenota scatole</h2>
-                <p className="sectionSub">
-                  Ritiro o consegna · Data e ora vicine · Totale automatico.
-                </p>
+                <p className="sectionSub">Ritiro o consegna · Data e ora · Totale automatico.</p>
               </div>
 
               <form onSubmit={onSubmit} className="formStack">
@@ -314,12 +277,7 @@ export default function Page() {
                 <div className="formGrid">
                   <div className="field">
                     <div className="label">Nome</div>
-                    <input
-                      className="input"
-                      value={nome}
-                      onChange={(e) => setNome(e.target.value)}
-                      placeholder="Es. Marco"
-                    />
+                    <input className="input" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Es. Marco" />
                   </div>
 
                   <div className="field">
@@ -335,45 +293,20 @@ export default function Page() {
 
                   <div className="field full">
                     <div className="label">Ritiro / Consegna</div>
-                    <select
-                      className="select"
-                      value={fulfillment}
-                      onChange={(e) =>
-                        setFulfillment(e.target.value as Fulfillment)
-                      }
-                    >
+                    <select className="select" value={fulfillment} onChange={(e) => setFulfillment(e.target.value as Fulfillment)}>
                       <option value="RITIRO">Ritiro</option>
                       <option value="CONSEGNA">Consegna</option>
                     </select>
                   </div>
 
-                  {/* ✅ Data e ora vicine */}
                   <div className="field full">
                     <div className="label">Data e ora</div>
 
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr",
-                        gap: 12,
-                      }}
-                    >
-                      <input
-                        className="input"
-                        type="date"
-                        value={data}
-                        onChange={(e) => setData(e.target.value)}
-                      />
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <input className="input" type="date" value={data} onChange={(e) => setData(e.target.value)} />
 
-                      <select
-                        className="select"
-                        value={ora}
-                        onChange={(e) => setOra(e.target.value)}
-                        disabled={!data}
-                      >
-                        <option value="">
-                          {data ? "Seleziona un orario" : "Scegli prima la data"}
-                        </option>
+                      <select className="select" value={ora} onChange={(e) => setOra(e.target.value)} disabled={!data}>
+                        <option value="">{data ? "Seleziona un orario" : "Scegli prima la data"}</option>
                         {timeOptions.map((t) =>
                           t.startsWith("—") ? (
                             <option key={t} value={t} disabled>
@@ -388,9 +321,7 @@ export default function Page() {
                       </select>
                     </div>
 
-                    <div className="hint">
-                      Se non trovi l’orario, scrivilo nelle note.
-                    </div>
+                    <div className="hint">Se non trovi l’orario, scrivilo nelle note.</div>
                   </div>
 
                   {needsAddress && (
@@ -406,107 +337,59 @@ export default function Page() {
                   )}
                 </div>
 
-                {/* Scatole */}
-                <div
-                  className="boxesWrap"
-                  style={{ background: "rgba(255,255,255,.05)" }}
-                >
+                <div className="boxesWrap" style={{ background: "rgba(255,255,255,.05)" }}>
                   <div className="boxesHead">
                     <div>
                       <div className="label">Scatole</div>
-                      <div className="mini">
-                        Scegli quantità: 50 / 100 / 200 arrosticini
-                      </div>
+                      <div className="mini">Scegli quantità: 50 / 100 / 200 arrosticini</div>
                       <div className="mini" style={{ marginTop: 6 }}>
                         <b>Riepilogo rapido:</b> {scatoleCompact}
                       </div>
                     </div>
 
-                    <div
-                      className="totalPill"
-                      style={{ background: "rgba(255,255,255,.10)" }}
-                    >
+                    <div className="totalPill" style={{ background: "rgba(255,255,255,.10)" }}>
                       Totale: <b>{totalArrosticini}</b>
                     </div>
                   </div>
 
                   <div className="boxesGrid">
-                    <div
-                      className="boxCard"
-                      style={{ background: "rgba(10,12,18,.55)" }}
-                    >
+                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
                       <div className="boxTitle">Scatola 50</div>
                       <div className="boxSub">50 arrosticini</div>
                       <div className="stepper">
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => dec(setScat50, scat50)}
-                          aria-label="Meno 50"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => dec(setScat50, scat50)} aria-label="Meno 50">
                           −
                         </button>
                         <div className="stepVal">{scat50}</div>
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => inc(setScat50, scat50)}
-                          aria-label="Più 50"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => inc(setScat50, scat50)} aria-label="Più 50">
                           +
                         </button>
                       </div>
                     </div>
 
-                    <div
-                      className="boxCard"
-                      style={{ background: "rgba(10,12,18,.55)" }}
-                    >
+                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
                       <div className="boxTitle">Scatola 100</div>
                       <div className="boxSub">100 arrosticini</div>
                       <div className="stepper">
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => dec(setScat100, scat100)}
-                          aria-label="Meno 100"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => dec(setScat100, scat100)} aria-label="Meno 100">
                           −
                         </button>
                         <div className="stepVal">{scat100}</div>
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => inc(setScat100, scat100)}
-                          aria-label="Più 100"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => inc(setScat100, scat100)} aria-label="Più 100">
                           +
                         </button>
                       </div>
                     </div>
 
-                    <div
-                      className="boxCard"
-                      style={{ background: "rgba(10,12,18,.55)" }}
-                    >
+                    <div className="boxCard" style={{ background: "rgba(10,12,18,.55)" }}>
                       <div className="boxTitle">Scatola 200</div>
                       <div className="boxSub">200 arrosticini</div>
                       <div className="stepper">
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => dec(setScat200, scat200)}
-                          aria-label="Meno 200"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => dec(setScat200, scat200)} aria-label="Meno 200">
                           −
                         </button>
                         <div className="stepVal">{scat200}</div>
-                        <button
-                          type="button"
-                          className="stepBtn"
-                          onClick={() => inc(setScat200, scat200)}
-                          aria-label="Più 200"
-                        >
+                        <button type="button" className="stepBtn" onClick={() => inc(setScat200, scat200)} aria-label="Più 200">
                           +
                         </button>
                       </div>
@@ -543,70 +426,54 @@ export default function Page() {
                   <div className={`status ${status}`}>{msg || " "}</div>
                 </div>
 
-                <div className="legal">
-                  Inviando accetti che il laboratorio ti contatti per conferma
-                  disponibilità.
-                </div>
+                <div className="legal">Inviando accetti che il laboratorio ti contatti per conferma disponibilità.</div>
               </form>
             </div>
           </section>
 
-          {/* CHAT */}
-          <section className="card chatCard" style={cardStyle}>
+          {/* CHAT (visibile solo quando assistantOpen=true) */}
+          <section
+            ref={(el) => {
+              assistantRef.current = el;
+            }}
+            className="card chatCard"
+            style={cardStyle}
+            aria-hidden={assistantOpen ? "false" : "true"}
+          >
             <div className="cardInner">
-              <div className="sectionHead">
-                <h2 className="sectionTitle">Assistente</h2>
-                <p className="sectionSub">
-                  Orari, ritiro/consegna, come ordinare, info generali.
-                </p>
+              <div className="sectionHead" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <h2 className="sectionTitle">Assistenza</h2>
+                  <p className="sectionSub">Domande rapide su ritiro/consegna e info generali.</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeAssistant}
+                  className="btnClose"
+                  aria-label="Chiudi assistenza"
+                  title="Chiudi"
+                >
+                  ✕
+                </button>
               </div>
 
-              <div
-                style={{
-                  marginBottom: 10,
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.16)",
-                  background: "rgba(34,197,94,.10)",
-                  color: "rgba(244,246,255,.92)",
-                  fontSize: 13,
-                  fontWeight: 800,
-                }}
-              >
-                Se vuoi <b>prenotare</b>: compila il <b>modulo</b> (oppure vai su{" "}
-                <b>“Prenota”</b>).
-              </div>
-
+              {/* ✅ tolta la scritta “Se vuoi prenotare compila il modulo…” */}
               <ChatBox />
-
-              <div className="chatHint">
-                Tip: il bot serve a ridurre telefonate. Se manca un’informazione
-                deve fare <b>1 domanda sola</b>.
-              </div>
             </div>
           </section>
         </main>
 
-        {/* barra mobile fissa */}
-        <div className="stickyBar">
-          <a
-            className="stickyBtn"
-            href={`tel:${PHONE_NUMBER}`}
-            style={{
-              background: "rgba(34,197,94,.16)",
-              border: "1px solid rgba(34,197,94,.45)",
+        {/* ✅ barra mobile: 1 solo bottone */}
+        <div className="stickyBarOne">
+          <button
+            className="stickyBtnOne primary"
+            onClick={() => {
+              if (!assistantOpen) openAssistant();
+              else closeAssistant();
             }}
           >
-            📞 Chiama
-          </a>
-
-          <button
-            className="stickyBtn primary"
-            onClick={() =>
-              setTab(tab === "prenota" ? "assistente" : "prenota")
-            }
-          >
-            {tab === "prenota" ? "💬 Apri assistente" : "🧾 Torna a prenota"}
+            {!assistantOpen ? "💬 Assistenza" : "🧾 Torna alla prenotazione"}
           </button>
         </div>
 
@@ -615,7 +482,6 @@ export default function Page() {
         </footer>
       </div>
 
-      {/* ✅ FIX MOBILE: niente bottoni tagliati + tab veri + safe-area iPhone + bg senza “fixed” */}
       <style jsx global>{`
         .bgLayer {
           position: fixed;
@@ -623,12 +489,10 @@ export default function Page() {
           z-index: -1;
         }
 
-        /* Evita che la sticky bar copra il form */
         .wrap {
           padding-bottom: calc(84px + env(safe-area-inset-bottom));
         }
 
-        /* Layout header più stabile */
         .heroTop {
           display: flex;
           gap: 12px;
@@ -645,16 +509,48 @@ export default function Page() {
         .heroTitleWrap {
           min-width: 0;
         }
-        .heroActions {
-          display: grid;
-          gap: 10px;
-          grid-auto-flow: row;
+
+        /* ✅ nascondiamo roba non più usata */
+        .heroActionsHidden,
+        .tabsHidden {
+          display: none;
         }
 
-        /* Mobile: tutto in colonna, bottoni larghi e non tagliati */
-        @media (max-width: 820px) {
+        /* ✅ layout: di base solo modulo */
+        .mainGrid.assistClosed {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 16px;
+          align-items: start;
+        }
+        .mainGrid.assistClosed .chatCard {
+          display: none;
+        }
+
+        /* ✅ quando assistenza è aperta: su desktop affiancata */
+        .mainGrid.assistOpen {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 16px;
+          align-items: start;
+        }
+
+        /* Bottone chiudi */
+        .btnClose {
+          height: 40px;
+          min-width: 40px;
+          border-radius: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(255, 255, 255, 0.08);
+          color: rgba(244, 246, 255, 0.92);
+          font-weight: 900;
+          cursor: pointer;
+        }
+
+        /* Mobile */
+        @media (max-width: 900px) {
           .bgLayer {
-            position: absolute; /* iOS: più fluido */
+            position: absolute;
           }
 
           .heroTop {
@@ -664,58 +560,47 @@ export default function Page() {
             flex-direction: column;
             width: 100%;
           }
-          .heroActions {
-            width: 100%;
-            grid-template-columns: 1fr 1fr;
-          }
-          .btnGhost {
-            width: 100%;
-            justify-content: center;
-          }
 
           .heroTitle {
-            font-size: 34px; /* meno enorme su iPhone */
+            font-size: 34px;
             line-height: 1.05;
           }
           .heroTag {
             font-size: 14px;
             opacity: 0.92;
           }
-          .heroSub {
-            font-size: 13px;
-            opacity: 0.9;
-          }
 
-          /* Tab: mostra solo la sezione selezionata */
-          .mainGrid.prenota .chatCard {
+          /* ✅ su mobile: quando assistenza aperta, mostra SOLO chat */
+          .mainGrid.assistOpen {
+            grid-template-columns: 1fr;
+          }
+          .mainGrid.assistOpen .orderCard {
             display: none;
           }
-          .mainGrid.assistente .orderCard {
-            display: none;
+          .mainGrid.assistOpen .chatCard {
+            display: block;
           }
 
-          /* Data/ora: se lo schermo è stretto impila */
+          /* Data/ora: impila su schermi stretti */
           .field.full > div[style*="grid-template-columns"] {
             grid-template-columns: 1fr !important;
           }
         }
 
-        /* Sticky bar: safe-area e niente overflow */
-        .stickyBar {
+        /* Sticky bar: un bottone */
+        .stickyBarOne {
           position: fixed;
           left: 0;
           right: 0;
           bottom: 0;
           padding: 12px;
           padding-bottom: calc(12px + env(safe-area-inset-bottom));
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
           background: rgba(0, 0, 0, 0.25);
           backdrop-filter: blur(10px);
           z-index: 50;
         }
-        .stickyBtn {
+        .stickyBtnOne {
+          width: 100%;
           border-radius: 16px;
           padding: 14px 14px;
           font-weight: 900;
@@ -724,7 +609,7 @@ export default function Page() {
           background: rgba(255, 255, 255, 0.1);
           border: 1px solid rgba(255, 255, 255, 0.18);
         }
-        .stickyBtn.primary {
+        .stickyBtnOne.primary {
           background: linear-gradient(90deg, #ff3b30, #ffcc00);
           border: none;
           color: rgba(16, 20, 30, 0.92);
