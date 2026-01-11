@@ -366,7 +366,7 @@ export default function PannelloPrenotazioniPage() {
                   📅
                 </div>
                 <div>
-                  <h1 className={styles.h1}>Prenotazioni — Pannello</h1>
+                  <h1 className={styles.h1}>Prenotazioni laboratorio arrosticini</h1>
                   {/* ✅ tolta la scritta “Chiaro, leggibile…” */}
                 </div>
               </div>

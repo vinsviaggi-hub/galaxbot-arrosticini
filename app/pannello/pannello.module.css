@@ -244,6 +244,14 @@
   border: 0;
 }
 
+/* ✅ LINEE VERTICALI TRA COLONNE (senza rompere la card) */
+.row td + td {
+  border-left: 1px solid rgba(15, 23, 42, 0.10);
+}
+.rowGold td + td {
+  border-left: 1px solid rgba(15, 23, 42, 0.14);
+}
+
 /* CARD CONTINUA NERA (senza buchi):
    - sinistra = disegna tutta la cornice con inset shadow
    - destra   = chiude la cornice e fa i raggi */
@@ -298,23 +306,34 @@
 .mono {
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* ✅ più leggibile */
+  color: #0f172a;
+  font-weight: 950;
 }
 
-/* ✅ Nome oro più leggibile con bordo nero */
+/* ✅ Nome cliente: NERO (prima oro) + molto leggibile */
 .tdName {
   font-weight: 950;
-  color: #d4af37;
+  color: #0f172a;
   text-transform: lowercase;
   letter-spacing: 0.01em;
 
-  /* bordo nero (effetto più netto) */
-  -webkit-text-stroke: 0.6px rgba(15, 23, 42, 0.95);
-  text-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.22),
-    0 0 10px rgba(0, 0, 0, 0.06);
+  /* niente stroke oro */
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
-.tdTot { font-weight: 950; }
+/* ✅ per rendere numeri/date/tel ancora più “forti” se usi questa classe nel TSX */
+.tdStrong {
+  color: #0f172a;
+  font-weight: 950;
+}
+
+.tdTot {
+  font-weight: 950;
+  color: #0f172a;
+}
 
 .tdWrap {
   max-width: 280px;
@@ -322,7 +341,7 @@
   word-break: break-word;
 }
 
-/* ✅ linee verticali tra le scatole 50|100|200
+/* ✅ linee verticali tra le scatole 50|100|200 (le lasciamo, già ok)
    colonne: 1 Data 2 Ora 3 Cliente 4 Telefono 5 Tipo 6 50 7 100 8 200 ...
    quindi mettiamo linee a sinistra di colonna 7 e 8 */
 .row td:nth-child(7),
@@ -414,11 +433,13 @@
   margin: 0;
   font-weight: 950;
   font-size: 18px;
-  color: #d4af37;
+
+  /* ✅ NERO (prima oro) */
+  color: #0f172a;
   text-transform: lowercase;
 
-  -webkit-text-stroke: 0.6px rgba(15, 23, 42, 0.95);
-  text-shadow: 0 1px 0 rgba(0,0,0,0.20);
+  -webkit-text-stroke: 0;
+  text-shadow: none;
 }
 
 .mSub {
@@ -469,12 +490,16 @@
 
 .mBoxValue {
   margin: 6px 0 0;
-  font-weight: 850;
+
+  /* ✅ più leggibile */
+  font-weight: 950;
+  color: #0f172a;
 }
 
 .mTot {
   font-size: 18px;
   font-weight: 950;
+  color: #0f172a;
 }
 
 .actionsMobile {
