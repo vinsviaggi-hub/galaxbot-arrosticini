@@ -20,6 +20,7 @@ type Booking = {
 };
 
 type StatusFilter = "TUTTE" | "NUOVA" | "CONFERMATA" | "CONSEGNATA" | "ANNULLATA";
+type ViewMode = "AUTO" | "TABELLA" | "CARD";
 
 function toStr(v: any) {
   return v === null || v === undefined ? "" : String(v);
@@ -119,6 +120,9 @@ export default function PannelloPrenotazioniPage() {
 
   const [soundOn, setSoundOn] = useState(true);
 
+  // ✅ Vista: AUTO / TABELLA / CARD
+  const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
+
   // evidenziazione oro solo per nuove arrivate mentre il pannello è aperto
   const seenRef = useRef<Set<string>>(new Set());
   const firstLoadDoneRef = useRef(false);
@@ -137,6 +141,23 @@ export default function PannelloPrenotazioniPage() {
       window.localStorage.setItem("galax_admin_sound", soundOn ? "1" : "0");
     } catch {}
   }, [soundOn]);
+
+  // ✅ carica/salva vista
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("galax_admin_view_mode");
+      if (v === "AUTO" || v === "TABELLA" || v === "CARD") setViewMode(v);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("galax_admin_view_mode", viewMode);
+    } catch {}
+  }, [viewMode]);
+
+  const cycleViewMode = () => {
+    setViewMode((v) => (v === "AUTO" ? "TABELLA" : v === "TABELLA" ? "CARD" : "AUTO"));
+  };
 
   const maybeNotifyNewRows = (list: Booking[]) => {
     if (!firstLoadDoneRef.current) {
@@ -355,6 +376,9 @@ export default function PannelloPrenotazioniPage() {
     }
   }
 
+  const forceTable = viewMode === "TABELLA";
+  const forceCards = viewMode === "CARD";
+
   return (
     <div className={styles.page}>
       <div className={styles.shell}>
@@ -367,11 +391,15 @@ export default function PannelloPrenotazioniPage() {
                 </div>
                 <div>
                   <h1 className={styles.h1}>Prenotazioni laboratorio arrosticini</h1>
-                  {/* ✅ tolta la scritta “Chiaro, leggibile…” */}
                 </div>
               </div>
 
               <div className={styles.headerActions}>
+                {/* ✅ Vista Auto / Tabella / Card */}
+                <button className={styles.btn} type="button" onClick={cycleViewMode} title="Cambia vista">
+                  🪟 Vista: <b>{viewMode}</b>
+                </button>
+
                 <button
                   className={styles.soundChip}
                   onClick={() => {
@@ -392,7 +420,6 @@ export default function PannelloPrenotazioniPage() {
               </div>
             </div>
 
-            {/* ✅ tolti i riquadri Oggi / Domani */}
             <div className={styles.statusBar}>
               <div className={styles.metricCard}>
                 <p className={styles.metricLabel}>Stati</p>
@@ -484,114 +511,124 @@ export default function PannelloPrenotazioniPage() {
           </div>
         ) : null}
 
-        {/* DESKTOP TABLE */}
-        <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th className={styles.th}>Data</th>
-                <th className={styles.th}>Ora</th>
-                <th className={styles.th}>Cliente</th>
-                <th className={styles.th}>Telefono</th>
-                <th className={styles.th}>Tipo</th>
-                <th className={styles.th}>50</th>
-                <th className={styles.th}>100</th>
-                <th className={styles.th}>200</th>
-                <th className={styles.th}>Tot</th>
-                <th className={styles.th}>Stato</th>
-                <th className={styles.th}>Indirizzo</th>
-                <th className={styles.th}>Note</th>
-                <th className={styles.th}>Azioni</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
-                <tr className={styles.row}>
-                  <td className={styles.td} colSpan={13}>
-                    Caricamento…
-                  </td>
+        {/* DESKTOP TABLE (forzabile anche su mobile con Vista: TABELLA) */}
+        <div
+          className={styles.tableWrap}
+          aria-busy={loading ? "true" : "false"}
+          style={forceCards ? { display: "none" } : forceTable ? { display: "block" } : undefined}
+        >
+          {/* wrapper opzionale per scroll laterale (lo sistemiamo nel CSS) */}
+          <div className={(styles as any).tableXScroll}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th className={styles.th}>Data</th>
+                  <th className={styles.th}>Ora</th>
+                  <th className={styles.th}>Cliente</th>
+                  <th className={styles.th}>Telefono</th>
+                  <th className={styles.th}>Tipo</th>
+                  <th className={styles.th}>50</th>
+                  <th className={styles.th}>100</th>
+                  <th className={styles.th}>200</th>
+                  <th className={styles.th}>Tot</th>
+                  <th className={styles.th}>Stato</th>
+                  <th className={styles.th}>Indirizzo</th>
+                  <th className={styles.th}>Note</th>
+                  <th className={styles.th}>Azioni</th>
                 </tr>
-              ) : filtered.length === 0 ? (
-                <tr className={styles.row}>
-                  <td className={styles.td} colSpan={13}>
-                    Nessun risultato.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((b, idx) => {
-                  const id = makeBookingId(b);
-                  const isGold = goldIds.has(id);
-                  const isBusy = busyId === id;
+              </thead>
 
-                  const phone = normalizePhone(b.telefono);
-                  const telHref = phone ? `tel:${phone}` : undefined;
-                  const mapHref =
-                    b.indirizzo && b.tipo === "CONSEGNA"
-                      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
-                      : undefined;
+              <tbody>
+                {loading ? (
+                  <tr className={styles.row}>
+                    <td className={styles.td} colSpan={13}>
+                      Caricamento…
+                    </td>
+                  </tr>
+                ) : filtered.length === 0 ? (
+                  <tr className={styles.row}>
+                    <td className={styles.td} colSpan={13}>
+                      Nessun risultato.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((b, idx) => {
+                    const id = makeBookingId(b);
+                    const isGold = goldIds.has(id);
+                    const isBusy = busyId === id;
 
-                  return (
-                    <tr key={`${id}-${idx}`} className={`${styles.row} ${isGold ? styles.rowGold : ""}`}>
-                      <td className={`${styles.td} ${styles.mono}`}>{formatDateIT(b.dataISO)}</td>
-                      <td className={`${styles.td} ${styles.mono}`}>{b.ora}</td>
-                      <td className={styles.tdName}>{b.nome}</td>
-                      <td className={`${styles.td} ${styles.mono}`}>{b.telefono}</td>
-                      <td className={styles.td}>
-                        <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
-                      </td>
-                      <td className={`${styles.td} ${styles.mono}`}>{b.s50}</td>
-                      <td className={`${styles.td} ${styles.mono}`}>{b.s100}</td>
-                      <td className={`${styles.td} ${styles.mono}`}>{b.s200}</td>
-                      <td className={`${styles.td} ${styles.mono} ${styles.tdTot}`}>{b.tot}</td>
-                      <td className={styles.td}>
-                        <span className={badgeClass(b.stato)}>{b.stato}</span>
-                      </td>
-                      <td className={styles.tdWrap}>{b.indirizzo || "—"}</td>
-                      <td className={styles.tdWrap}>{b.note || "—"}</td>
-                      <td className={styles.td}>
-                        <div className={styles.actions}>
-                          {telHref ? (
-                            <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
-                              📞 Chiama
-                            </a>
-                          ) : null}
+                    const phone = normalizePhone(b.telefono);
+                    const telHref = phone ? `tel:${phone}` : undefined;
+                    const mapHref =
+                      b.indirizzo && b.tipo === "CONSEGNA"
+                        ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
+                        : undefined;
 
-                          <button
-                            className={`${styles.actionBtn} ${styles.actionOk}`}
-                            type="button"
-                            disabled={isBusy || (b.stato || "").toUpperCase() !== "NUOVA"}
-                            onClick={() => updateStatus(b, "CONFERMATA")}
-                          >
-                            ✅ Conferma
-                          </button>
+                    return (
+                      <tr key={`${id}-${idx}`} className={`${styles.row} ${isGold ? styles.rowGold : ""}`}>
+                        <td className={`${styles.td} ${styles.mono}`}>{formatDateIT(b.dataISO)}</td>
+                        <td className={`${styles.td} ${styles.mono}`}>{b.ora}</td>
+                        <td className={styles.tdName}>{b.nome}</td>
+                        <td className={`${styles.td} ${styles.mono}`}>{b.telefono}</td>
+                        <td className={styles.td}>
+                          <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
+                        </td>
+                        <td className={`${styles.td} ${styles.mono}`}>{b.s50}</td>
+                        <td className={`${styles.td} ${styles.mono}`}>{b.s100}</td>
+                        <td className={`${styles.td} ${styles.mono}`}>{b.s200}</td>
+                        <td className={`${styles.td} ${styles.mono} ${styles.tdTot}`}>{b.tot}</td>
+                        <td className={styles.td}>
+                          <span className={badgeClass(b.stato)}>{b.stato}</span>
+                        </td>
+                        <td className={styles.tdWrap}>{b.indirizzo || "—"}</td>
+                        <td className={styles.tdWrap}>{b.note || "—"}</td>
+                        <td className={styles.td}>
+                          <div className={styles.actions}>
+                            {telHref ? (
+                              <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
+                                📞 Chiama
+                              </a>
+                            ) : null}
 
-                          <button
-                            className={`${styles.actionBtn} ${styles.actionNo}`}
-                            type="button"
-                            disabled={isBusy}
-                            onClick={() => updateStatus(b, "ANNULLATA")}
-                          >
-                            ❌ Annulla
-                          </button>
+                            <button
+                              className={`${styles.actionBtn} ${styles.actionOk}`}
+                              type="button"
+                              disabled={isBusy || (b.stato || "").toUpperCase() !== "NUOVA"}
+                              onClick={() => updateStatus(b, "CONFERMATA")}
+                            >
+                              ✅ Conferma
+                            </button>
 
-                          {mapHref ? (
-                            <a className={`${styles.actionBtn} ${styles.actionMap}`} href={mapHref} target="_blank" rel="noreferrer">
-                              📍 Maps
-                            </a>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                            <button
+                              className={`${styles.actionBtn} ${styles.actionNo}`}
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => updateStatus(b, "ANNULLATA")}
+                            >
+                              ❌ Annulla
+                            </button>
+
+                            {mapHref ? (
+                              <a className={`${styles.actionBtn} ${styles.actionMap}`} href={mapHref} target="_blank" rel="noreferrer">
+                                📍 Maps
+                              </a>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* MOBILE CARDS */}
-        <div className={styles.mobileCards}>
+        {/* MOBILE CARDS (forzabile anche su desktop con Vista: CARD) */}
+        <div
+          className={styles.mobileCards}
+          style={forceTable ? { display: "none" } : forceCards ? { display: "grid" } : undefined}
+        >
           {loading ? (
             <div className={styles.mCard}>Caricamento…</div>
           ) : filtered.length === 0 ? (
