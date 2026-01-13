@@ -527,10 +527,13 @@ export default function PannelloPrenotazioniPage() {
                   <th className={styles.th}>Cliente</th>
                   <th className={styles.th}>Telefono</th>
                   <th className={styles.th}>Tipo</th>
-                  <th className={styles.th}>50</th>
-                  <th className={styles.th}>100</th>
-                  <th className={styles.th}>200</th>
-                  <th className={styles.th}>Tot</th>
+
+                  {/* ✅ qui la modifica (solo testo) */}
+                  <th className={styles.th}>Scatole 50pz</th>
+                  <th className={styles.th}>Scatole 100pz</th>
+                  <th className={styles.th}>Scatole 200pz</th>
+                  <th className={styles.th}>Tot pezzi</th>
+
                   <th className={styles.th}>Stato</th>
                   <th className={styles.th}>Indirizzo</th>
                   <th className={styles.th}>Note</th>
@@ -625,10 +628,7 @@ export default function PannelloPrenotazioniPage() {
         </div>
 
         {/* MOBILE CARDS (forzabile anche su desktop con Vista: CARD) */}
-        <div
-          className={styles.mobileCards}
-          style={forceTable ? { display: "none" } : forceCards ? { display: "grid" } : undefined}
-        >
+        <div className={styles.mobileCards} style={forceTable ? { display: "none" } : forceCards ? { display: "grid" } : undefined}>
           {loading ? (
             <div className={styles.mCard}>Caricamento…</div>
           ) : filtered.length === 0 ? (
