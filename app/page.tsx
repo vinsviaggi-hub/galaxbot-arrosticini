@@ -1,12 +1,15 @@
 "use client";
 
-import React, { useMemo, useRef, useState, type FormEvent } from "react";
+import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import ChatBox from "./components/chatbox";
 
 type Fulfillment = "RITIRO" | "CONSEGNA";
 
+type ApiSettingsResponse =
+  | { ok: true; settings?: { bookings_open?: boolean }; bookings_open?: boolean }
+  | { ok: false; error?: string; details?: any };
+
 const BRAND_NAME = "Arrosticini Abruzzesi";
-// ✅ tolto “Prenota in 20 secondi…”
 const TAGLINE = "Scatole da 50 / 100 / 200";
 const DEFAULT_STATUS = "NUOVA";
 
@@ -25,6 +28,15 @@ function buildSlots(startHH: number, startMM: number, endHH: number, endMM: numb
     t += stepMin;
   }
   return out;
+}
+
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Risposta non valida dal server.", details: text };
+  }
 }
 
 export default function Page() {
@@ -55,6 +67,63 @@ export default function Page() {
       }, 50);
     });
   }
+
+  // ✅ PRENOTAZIONI APERTE/CHIUSE (collegate al pannello via /api/settings)
+  const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+
+  const loadSettings = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setSettingsLoading(true);
+
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      const data: ApiSettingsResponse = (await safeJson(res)) as any;
+
+      if (!res.ok || !(data as any)?.ok) {
+        setBookingsOpen(null);
+        return;
+      }
+
+      // ✅ supporta sia {ok:true, settings:{bookings_open:true}} sia {ok:true, bookings_open:true}
+      const open =
+        (data as any)?.settings?.bookings_open ??
+        (data as any)?.bookings_open;
+
+      if (typeof open !== "boolean") {
+        setBookingsOpen(null);
+        return;
+      }
+
+      setBookingsOpen(open);
+    } catch {
+      setBookingsOpen(null);
+    } finally {
+      if (!opts?.silent) setSettingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSettings({ silent: true });
+
+    const onVis = () => {
+      if (!document.hidden) void loadSettings({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    // refresh leggero mentre la pagina è aperta
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadSettings({ silent: true });
+    }, 20_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
+  const bookingDisabled = bookingsOpen === false; // se null non blocco (evita falsi negativi)
 
   // Form
   const [nome, setNome] = useState("");
@@ -109,6 +178,13 @@ export default function Page() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setMsg("");
+
+    if (bookingDisabled) {
+      setStatus("err");
+      setMsg("⛔️ Prenotazioni momentaneamente chiuse. Riprova più tardi.");
+      return;
+    }
+
     setStatus("loading");
 
     const cleanNome = nome.trim();
@@ -172,6 +248,7 @@ export default function Page() {
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        cache: "no-store",
         body: JSON.stringify(payload),
       });
 
@@ -240,28 +317,59 @@ export default function Page() {
                   {BRAND_NAME}
                 </h1>
                 <p className="heroTag">{TAGLINE}</p>
+
+                {/* ✅ Stato prenotazioni (collegato al pannello) */}
+                <div
+                  className="statusPill"
+                  title="Stato prenotazioni"
+                  style={{
+                    border:
+                      bookingsOpen === null
+                        ? "1px solid rgba(255,255,255,0.18)"
+                        : bookingsOpen
+                        ? "1px solid rgba(34,197,94,0.35)"
+                        : "1px solid rgba(255,75,75,0.35)",
+                    background:
+                      bookingsOpen === null
+                        ? "rgba(255,255,255,0.10)"
+                        : bookingsOpen
+                        ? "rgba(34,197,94,0.16)"
+                        : "rgba(255,75,75,0.16)",
+                  }}
+                >
+                  <span className="statusIcon">{settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"}</span>
+                  <span>
+                    Prenotazioni: <b>{bookingsLabel}</b>
+                  </span>
+
+                  <button type="button" className="statusReload" onClick={() => void loadSettings({ silent: false })} title="Ricarica stato">
+                    🔄
+                  </button>
+                </div>
               </div>
 
-              {/* ✅ tolti Chiama e WhatsApp */}
               <div className="heroActionsHidden" />
             </div>
           </div>
 
           <div className="heroBar" />
-
-          {/* ✅ tolte le tab Prenota / Assistente */}
           <div className="tabsHidden" />
         </header>
 
-        {/* ✅ layout cambia solo quando assistenza è aperta */}
         <main className={`mainGrid ${assistantOpen ? "assistOpen" : "assistClosed"}`}>
-          {/* PRENOTA */}
           <section className="card orderCard" style={cardStyle}>
             <div className="cardInner">
               <div className="sectionHead">
                 <h2 className="sectionTitle">Prenota scatole</h2>
                 <p className="sectionSub">Ritiro o consegna · Data e ora · Totale automatico.</p>
               </div>
+
+              {bookingDisabled ? (
+                <div className="closedBox">
+                  <div className="closedTitle">⛔️ Prenotazioni momentaneamente chiuse</div>
+                  <div className="closedSub">Riprova più tardi oppure premi 🔄 per ricaricare lo stato.</div>
+                </div>
+              ) : null}
 
               <form onSubmit={onSubmit} className="formStack">
                 <input
@@ -420,8 +528,8 @@ export default function Page() {
                 </div>
 
                 <div className="actions">
-                  <button className="btnPrimary" disabled={status === "loading"}>
-                    {status === "loading" ? "Invio..." : "Invia prenotazione"}
+                  <button className="btnPrimary" disabled={status === "loading" || bookingDisabled}>
+                    {bookingDisabled ? "Prenotazioni chiuse" : status === "loading" ? "Invio..." : "Invia prenotazione"}
                   </button>
                   <div className={`status ${status}`}>{msg || " "}</div>
                 </div>
@@ -431,7 +539,7 @@ export default function Page() {
             </div>
           </section>
 
-          {/* CHAT (visibile solo quando assistantOpen=true) */}
+          {/* CHAT */}
           <section
             ref={(el) => {
               assistantRef.current = el;
@@ -447,18 +555,11 @@ export default function Page() {
                   <p className="sectionSub">Domande rapide su ritiro/consegna e info generali.</p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={closeAssistant}
-                  className="btnClose"
-                  aria-label="Chiudi assistenza"
-                  title="Chiudi"
-                >
+                <button type="button" onClick={closeAssistant} className="btnClose" aria-label="Chiudi assistenza" title="Chiudi">
                   ✕
                 </button>
               </div>
 
-              {/* ✅ tolta la scritta “Se vuoi prenotare compila il modulo…” */}
               <ChatBox />
             </div>
           </section>
@@ -510,13 +611,59 @@ export default function Page() {
           min-width: 0;
         }
 
-        /* ✅ nascondiamo roba non più usata */
         .heroActionsHidden,
         .tabsHidden {
           display: none;
         }
 
-        /* ✅ layout: di base solo modulo */
+        .statusPill {
+          margin-top: 10px;
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 9px 12px;
+          border-radius: 999px;
+          font-weight: 950;
+          font-size: 12px;
+          letter-spacing: 0.6px;
+          text-transform: uppercase;
+          color: rgba(255, 255, 255, 0.92);
+          backdrop-filter: blur(10px);
+        }
+        .statusIcon {
+          display: inline-flex;
+          width: 18px;
+          justify-content: center;
+        }
+        .statusReload {
+          margin-left: 6px;
+          border: 0;
+          cursor: pointer;
+          padding: 6px 10px;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.12);
+          color: rgba(255, 255, 255, 0.92);
+          font-weight: 950;
+        }
+
+        .closedBox {
+          margin: 12px 0 14px;
+          padding: 12px 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(255, 75, 75, 0.35);
+          background: rgba(255, 75, 75, 0.12);
+          color: rgba(255, 255, 255, 0.92);
+        }
+        .closedTitle {
+          font-weight: 950;
+          margin-bottom: 4px;
+        }
+        .closedSub {
+          opacity: 0.92;
+          font-size: 13px;
+          line-height: 1.35;
+        }
+
         .mainGrid.assistClosed {
           display: grid;
           grid-template-columns: 1fr;
@@ -527,7 +674,6 @@ export default function Page() {
           display: none;
         }
 
-        /* ✅ quando assistenza è aperta: su desktop affiancata */
         .mainGrid.assistOpen {
           display: grid;
           grid-template-columns: 1.15fr 0.85fr;
@@ -535,7 +681,6 @@ export default function Page() {
           align-items: start;
         }
 
-        /* Bottone chiudi */
         .btnClose {
           height: 40px;
           min-width: 40px;
@@ -547,7 +692,6 @@ export default function Page() {
           cursor: pointer;
         }
 
-        /* Mobile */
         @media (max-width: 900px) {
           .bgLayer {
             position: absolute;
@@ -570,7 +714,6 @@ export default function Page() {
             opacity: 0.92;
           }
 
-          /* ✅ su mobile: quando assistenza aperta, mostra SOLO chat */
           .mainGrid.assistOpen {
             grid-template-columns: 1fr;
           }
@@ -581,13 +724,11 @@ export default function Page() {
             display: block;
           }
 
-          /* Data/ora: impila su schermi stretti */
           .field.full > div[style*="grid-template-columns"] {
             grid-template-columns: 1fr !important;
           }
         }
 
-        /* Sticky bar: un bottone */
         .stickyBarOne {
           position: fixed;
           left: 0;
