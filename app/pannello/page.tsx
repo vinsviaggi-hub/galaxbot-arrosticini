@@ -123,6 +123,21 @@ export default function PannelloPrenotazioniPage() {
   // ✅ Vista: AUTO / TABELLA / CARD
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
 
+  // ✅ AUTO: su tablet/mobile mostro CARD (così niente tabella “gigante”)
+  const [autoCards, setAutoCards] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1100px)");
+    const sync = () => setAutoCards(mq.matches);
+    sync();
+    try {
+      mq.addEventListener("change", sync);
+      return () => mq.removeEventListener("change", sync);
+    } catch {
+      mq.addListener(sync);
+      return () => mq.removeListener(sync);
+    }
+  }, []);
+
   // evidenziazione oro solo per nuove arrivate mentre il pannello è aperto
   const seenRef = useRef<Set<string>>(new Set());
   const firstLoadDoneRef = useRef(false);
@@ -326,13 +341,14 @@ export default function PannelloPrenotazioniPage() {
     return c;
   }, [rows]);
 
-  async function updateStatus(b: Booking, newStatus: "CONFERMATA" | "ANNULLATA") {
+  // ✅ ora supporta anche CONSEGNATA
+  async function updateStatus(b: Booking, newStatus: "CONFERMATA" | "CONSEGNATA" | "ANNULLATA") {
     const id = makeBookingId(b);
     if (!id) return;
 
-    // WhatsApp subito
+    // WhatsApp: SOLO conferma/annulla (consegnata di solito no)
     if (newStatus === "CONFERMATA") openWA(b.telefono, waTextConfirm(b));
-    else openWA(b.telefono, waTextCancel(b));
+    if (newStatus === "ANNULLATA") openWA(b.telefono, waTextCancel(b));
 
     // UI subito
     const prev = b.stato;
@@ -343,7 +359,7 @@ export default function PannelloPrenotazioniPage() {
       return next;
     });
 
-    // salva (se hai la POST pronta lato /api/admin/bookings)
+    // salva
     setBusyId(id);
     setErr("");
 
@@ -379,12 +395,23 @@ export default function PannelloPrenotazioniPage() {
   const forceTable = viewMode === "TABELLA";
   const forceCards = viewMode === "CARD";
 
+  const showTable = forceTable || (viewMode === "AUTO" && !autoCards && !forceCards);
+  const showCards = forceCards || (viewMode === "AUTO" && autoCards && !forceTable);
+
+  // ✅ bottone CONSEGNATA giallo (stesso “tono” del badge CONSEGNATA)
+  const consegnataBtnStyle: React.CSSProperties = {
+    background: "linear-gradient(180deg, rgba(255, 210, 77, 0.92), rgba(255, 170, 0, 0.85))",
+    color: "#1b1400",
+    border: "1px solid rgba(255,255,255,0.22)",
+    fontWeight: 900,
+  };
+
   return (
-    <div className={styles.page}>
+    <div className={`${styles.page} ar-panel`}>
       <div className={styles.shell}>
         <div className={styles.header}>
           <div className={styles.headerInner}>
-            <div className={styles.topRow}>
+            <div className={`${styles.topRow} ar-topRow`}>
               <div className={styles.titleWrap}>
                 <div className={styles.logo} aria-hidden>
                   📅
@@ -394,8 +421,7 @@ export default function PannelloPrenotazioniPage() {
                 </div>
               </div>
 
-              <div className={styles.headerActions}>
-                {/* ✅ Vista Auto / Tabella / Card */}
+              <div className={`${styles.headerActions} ar-actions`}>
                 <button className={styles.btn} type="button" onClick={cycleViewMode} title="Cambia vista">
                   🪟 Vista: <b>{viewMode}</b>
                 </button>
@@ -423,7 +449,9 @@ export default function PannelloPrenotazioniPage() {
             <div className={styles.statusBar}>
               <div className={styles.metricCard}>
                 <p className={styles.metricLabel}>Stati</p>
-                <div className={styles.pills}>
+
+                {/* ✅ aggiungo classe stabile per far WRAP su tablet */}
+                <div className={`${styles.pills} ar-pills`}>
                   <button
                     className={`${styles.pill} ${status === "NUOVA" ? styles.pillActive : ""}`}
                     onClick={() => setStatus("NUOVA")}
@@ -511,15 +539,14 @@ export default function PannelloPrenotazioniPage() {
           </div>
         ) : null}
 
-        {/* DESKTOP TABLE (forzabile anche su mobile con Vista: TABELLA) */}
+        {/* TABELLA */}
         <div
           className={styles.tableWrap}
           aria-busy={loading ? "true" : "false"}
-          style={forceCards ? { display: "none" } : forceTable ? { display: "block" } : undefined}
+          style={!showTable ? { display: "none" } : undefined}
         >
-          {/* wrapper opzionale per scroll laterale (lo sistemiamo nel CSS) */}
-          <div className={(styles as any).tableXScroll}>
-            <table className={styles.table}>
+          <div className="ar-tableX">
+            <table className={`${styles.table} ar-table`}>
               <thead>
                 <tr>
                   <th className={styles.th}>Data</th>
@@ -527,13 +554,10 @@ export default function PannelloPrenotazioniPage() {
                   <th className={styles.th}>Cliente</th>
                   <th className={styles.th}>Telefono</th>
                   <th className={styles.th}>Tipo</th>
-
-                  {/* ✅ qui la modifica (solo testo) */}
                   <th className={styles.th}>Scatole 50pz</th>
                   <th className={styles.th}>Scatole 100pz</th>
                   <th className={styles.th}>Scatole 200pz</th>
                   <th className={styles.th}>Tot pezzi</th>
-
                   <th className={styles.th}>Stato</th>
                   <th className={styles.th}>Indirizzo</th>
                   <th className={styles.th}>Note</th>
@@ -567,6 +591,8 @@ export default function PannelloPrenotazioniPage() {
                         ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
                         : undefined;
 
+                    const statoUp = (b.stato || "").toUpperCase();
+
                     return (
                       <tr key={`${id}-${idx}`} className={`${styles.row} ${isGold ? styles.rowGold : ""}`}>
                         <td className={`${styles.td} ${styles.mono}`}>{formatDateIT(b.dataISO)}</td>
@@ -583,8 +609,8 @@ export default function PannelloPrenotazioniPage() {
                         <td className={styles.td}>
                           <span className={badgeClass(b.stato)}>{b.stato}</span>
                         </td>
-                        <td className={styles.tdWrap}>{b.indirizzo || "—"}</td>
-                        <td className={styles.tdWrap}>{b.note || "—"}</td>
+                        <td className={`${styles.tdWrap} ar-wrap`}>{b.indirizzo || "—"}</td>
+                        <td className={`${styles.tdWrap} ar-wrap`}>{b.note || "—"}</td>
                         <td className={styles.td}>
                           <div className={styles.actions}>
                             {telHref ? (
@@ -596,10 +622,22 @@ export default function PannelloPrenotazioniPage() {
                             <button
                               className={`${styles.actionBtn} ${styles.actionOk}`}
                               type="button"
-                              disabled={isBusy || (b.stato || "").toUpperCase() !== "NUOVA"}
+                              disabled={isBusy || statoUp !== "NUOVA"}
                               onClick={() => updateStatus(b, "CONFERMATA")}
                             >
                               ✅ Conferma
+                            </button>
+
+                            {/* ✅ NUOVO: tasto CONSEGNATA (solo se è CONFERMATA) */}
+                            <button
+                              className={`${styles.actionBtn} ar-actionDone`}
+                              style={consegnataBtnStyle}
+                              type="button"
+                              disabled={isBusy || statoUp !== "CONFERMATA"}
+                              onClick={() => updateStatus(b, "CONSEGNATA")}
+                              title={statoUp !== "CONFERMATA" ? "Prima conferma, poi consegna" : "Segna come consegnata"}
+                            >
+                              📦 Consegnata
                             </button>
 
                             <button
@@ -627,8 +665,8 @@ export default function PannelloPrenotazioniPage() {
           </div>
         </div>
 
-        {/* MOBILE CARDS (forzabile anche su desktop con Vista: CARD) */}
-        <div className={styles.mobileCards} style={forceTable ? { display: "none" } : forceCards ? { display: "grid" } : undefined}>
+        {/* CARD */}
+        <div className={styles.mobileCards} style={!showCards ? { display: "none" } : undefined}>
           {loading ? (
             <div className={styles.mCard}>Caricamento…</div>
           ) : filtered.length === 0 ? (
@@ -645,6 +683,8 @@ export default function PannelloPrenotazioniPage() {
                 b.indirizzo && b.tipo === "CONSEGNA"
                   ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
                   : undefined;
+
+              const statoUp = (b.stato || "").toUpperCase();
 
               return (
                 <div key={`${id}-m-${idx}`} className={`${styles.mCard} ${isGold ? styles.mCardGold : ""}`}>
@@ -700,10 +740,21 @@ export default function PannelloPrenotazioniPage() {
                     <button
                       className={`${styles.actionBtn} ${styles.actionOk}`}
                       type="button"
-                      disabled={isBusy || (b.stato || "").toUpperCase() !== "NUOVA"}
+                      disabled={isBusy || statoUp !== "NUOVA"}
                       onClick={() => updateStatus(b, "CONFERMATA")}
                     >
                       ✅ Conferma
+                    </button>
+
+                    {/* ✅ NUOVO: consegnata anche in card */}
+                    <button
+                      className={`${styles.actionBtn} ar-actionDone`}
+                      style={consegnataBtnStyle}
+                      type="button"
+                      disabled={isBusy || statoUp !== "CONFERMATA"}
+                      onClick={() => updateStatus(b, "CONSEGNATA")}
+                    >
+                      📦 Consegnata
                     </button>
 
                     <button
@@ -729,6 +780,43 @@ export default function PannelloPrenotazioniPage() {
 
         <div className={styles.footer}>GalaxBot • Pannello prenotazioni</div>
       </div>
+
+      {/* ✅ patch CSS “universale” per tablet: wrap pills + tabella scroll + font più leggibile */}
+      <style>{`
+        .ar-panel .ar-pills{
+          display:flex;
+          flex-wrap:wrap;
+          gap:8px;
+        }
+        .ar-panel .ar-actions{
+          flex-wrap:wrap;
+          gap:10px;
+        }
+        .ar-panel .ar-tableX{
+          width:100%;
+          overflow-x:auto;
+          -webkit-overflow-scrolling:touch;
+          padding-bottom:6px;
+        }
+        .ar-panel .ar-table{
+          width:100%;
+          min-width: 980px; /* evita “schiacciamenti brutti”: su tablet scorre, su desktop entra */
+        }
+        .ar-panel .ar-table th{
+          font-size: 12px;
+          line-height: 1.15;
+          white-space: nowrap;
+        }
+        .ar-panel .ar-table td{
+          font-size: 13px;
+          line-height: 1.25;
+        }
+        .ar-panel .ar-wrap{
+          max-width: 320px;
+          white-space: normal;
+          word-break: break-word;
+        }
+      `}</style>
     </div>
   );
 }
