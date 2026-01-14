@@ -22,6 +22,19 @@ type Booking = {
 type StatusFilter = "TUTTE" | "NUOVA" | "CONFERMATA" | "CONSEGNATA" | "ANNULLATA";
 type ViewMode = "AUTO" | "TABELLA" | "CARD";
 
+type SettingsResponse =
+  | { ok: true; bookings_open: boolean }
+  | { ok: false; error?: string; details?: any };
+
+async function safeJson(res: Response) {
+  const text = await res.text().catch(() => "");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, error: "Risposta non valida dal server.", details: text };
+  }
+}
+
 function toStr(v: any) {
   return v === null || v === undefined ? "" : String(v);
 }
@@ -123,10 +136,10 @@ export default function PannelloPrenotazioniPage() {
   // ✅ Vista: AUTO / TABELLA / CARD
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
 
-  // ✅ AUTO: su tablet/mobile mostro CARD (così niente tabella “gigante”)
+  // ✅ AUTO “vero”: CARD solo su telefono, TABella su tablet/desktop
   const [autoCards, setAutoCards] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 1100px)");
+    const mq = window.matchMedia("(max-width: 640px)");
     const sync = () => setAutoCards(mq.matches);
     sync();
     try {
@@ -136,6 +149,94 @@ export default function PannelloPrenotazioniPage() {
       mq.addListener(sync);
       return () => mq.removeListener(sync);
     }
+  }, []);
+
+  // ✅ Prenotazioni aperte/chiuse (stato pubblico)
+  const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+
+  const loadSettings = async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setSettingsLoading(true);
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      const data: SettingsResponse = await safeJson(res);
+      if (!(data as any)?.ok) {
+        setBookingsOpen(null);
+        return;
+      }
+      setBookingsOpen(Boolean((data as any).bookings_open));
+    } catch {
+      setBookingsOpen(null);
+    } finally {
+      if (!opts?.silent) setSettingsLoading(false);
+    }
+  };
+
+  const setBookingsOpenRemote = async (open: boolean) => {
+    // prova prima admin endpoint (protetto da cookie admin)
+    const body = JSON.stringify({ action: "set_bookings_open", bookings_open: open });
+    let lastErr = "";
+
+    const tryPost = async (url: string) => {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body,
+      });
+      const d: any = await safeJson(r);
+      if (!r.ok || !d?.ok) {
+        const msg = d?.error || `Errore impostando prenotazioni su ${url}`;
+        throw new Error(msg);
+      }
+      return d;
+    };
+
+    try {
+      await tryPost("/api/admin/settings");
+      return;
+    } catch (e: any) {
+      lastErr = e?.message || "Errore";
+    }
+
+    // fallback: se usi lo stesso endpoint /api/settings anche in POST
+    try {
+      await tryPost("/api/settings");
+      return;
+    } catch (e: any) {
+      lastErr = e?.message || lastErr || "Errore";
+    }
+
+    throw new Error(lastErr || "Impossibile aggiornare lo stato prenotazioni.");
+  };
+
+  const toggleBookings = async () => {
+    const next = !(bookingsOpen ?? true);
+    const ok = window.confirm(
+      next ? "Vuoi APRIRE le prenotazioni nell'app?" : "Vuoi CHIUDERE le prenotazioni nell'app?"
+    );
+    if (!ok) return;
+
+    setSettingsBusy(true);
+    setErr("");
+    try {
+      // ottimismo UI
+      setBookingsOpen(next);
+      await setBookingsOpenRemote(next);
+      await loadSettings({ silent: true });
+    } catch (e: any) {
+      await loadSettings({ silent: true });
+      setErr(e?.message || "Errore aggiornando prenotazioni.");
+    } finally {
+      setSettingsBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSettings({ silent: true });
+    const id = window.setInterval(() => void loadSettings({ silent: true }), 30_000);
+    return () => window.clearInterval(id);
   }, []);
 
   // evidenziazione oro solo per nuove arrivate mentre il pannello è aperto
@@ -398,13 +499,14 @@ export default function PannelloPrenotazioniPage() {
   const showTable = forceTable || (viewMode === "AUTO" && !autoCards && !forceCards);
   const showCards = forceCards || (viewMode === "AUTO" && autoCards && !forceTable);
 
-  // ✅ bottone CONSEGNATA giallo (stesso “tono” del badge CONSEGNATA)
   const consegnataBtnStyle: React.CSSProperties = {
     background: "linear-gradient(180deg, rgba(255, 210, 77, 0.92), rgba(255, 170, 0, 0.85))",
     color: "#1b1400",
-    border: "1px solid rgba(255,255,255,0.22)",
+    border: "1px solid rgba(15, 23, 42, 0.16)",
     fontWeight: 900,
   };
+
+  const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
 
   return (
     <div className={`${styles.page} ar-panel`}>
@@ -422,6 +524,43 @@ export default function PannelloPrenotazioniPage() {
               </div>
 
               <div className={`${styles.headerActions} ar-actions`}>
+                {/* ✅ Stato prenotazioni (app pubblica) */}
+                <span
+                  className={styles.soundChip}
+                  title="Stato prenotazioni (app)"
+                  style={{
+                    border:
+                      bookingsOpen === null
+                        ? "1px solid rgba(15,23,42,0.14)"
+                        : bookingsOpen
+                        ? "1px solid rgba(22,163,74,0.35)"
+                        : "1px solid rgba(220,38,38,0.35)",
+                    background:
+                      bookingsOpen === null
+                        ? "rgba(255,255,255,0.86)"
+                        : bookingsOpen
+                        ? "rgba(22,163,74,0.10)"
+                        : "rgba(220,38,38,0.08)",
+                  }}
+                >
+                  {settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"} Prenotazioni:{" "}
+                  <b>{bookingsLabel}</b>
+                </span>
+
+                <button
+                  className={styles.btn}
+                  type="button"
+                  onClick={toggleBookings}
+                  disabled={settingsBusy}
+                  title="Apri/chiudi prenotazioni nell'app"
+                  style={{
+                    borderColor: bookingsOpen ? "rgba(220,38,38,0.35)" : "rgba(22,163,74,0.35)",
+                    background: bookingsOpen ? "rgba(220,38,38,0.08)" : "rgba(22,163,74,0.10)",
+                  }}
+                >
+                  {settingsBusy ? "…" : bookingsOpen ? "⛔️ Chiudi prenotazioni" : "✅ Apri prenotazioni"}
+                </button>
+
                 <button className={styles.btn} type="button" onClick={cycleViewMode} title="Cambia vista">
                   🪟 Vista: <b>{viewMode}</b>
                 </button>
@@ -450,7 +589,6 @@ export default function PannelloPrenotazioniPage() {
               <div className={styles.metricCard}>
                 <p className={styles.metricLabel}>Stati</p>
 
-                {/* ✅ aggiungo classe stabile per far WRAP su tablet */}
                 <div className={`${styles.pills} ar-pills`}>
                   <button
                     className={`${styles.pill} ${status === "NUOVA" ? styles.pillActive : ""}`}
@@ -540,11 +678,7 @@ export default function PannelloPrenotazioniPage() {
         ) : null}
 
         {/* TABELLA */}
-        <div
-          className={styles.tableWrap}
-          aria-busy={loading ? "true" : "false"}
-          style={!showTable ? { display: "none" } : undefined}
-        >
+        <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"} style={!showTable ? { display: "none" } : undefined}>
           <div className="ar-tableX">
             <table className={`${styles.table} ar-table`}>
               <thead>
@@ -628,7 +762,6 @@ export default function PannelloPrenotazioniPage() {
                               ✅ Conferma
                             </button>
 
-                            {/* ✅ NUOVO: tasto CONSEGNATA (solo se è CONFERMATA) */}
                             <button
                               className={`${styles.actionBtn} ar-actionDone`}
                               style={consegnataBtnStyle}
@@ -746,7 +879,6 @@ export default function PannelloPrenotazioniPage() {
                       ✅ Conferma
                     </button>
 
-                    {/* ✅ NUOVO: consegnata anche in card */}
                     <button
                       className={`${styles.actionBtn} ar-actionDone`}
                       style={consegnataBtnStyle}
@@ -781,41 +913,15 @@ export default function PannelloPrenotazioniPage() {
         <div className={styles.footer}>GalaxBot • Pannello prenotazioni</div>
       </div>
 
-      {/* ✅ patch CSS “universale” per tablet: wrap pills + tabella scroll + font più leggibile */}
+      {/* ✅ patch minima: table scroll + wrap pills su tablet */}
       <style>{`
-        .ar-panel .ar-pills{
-          display:flex;
-          flex-wrap:wrap;
-          gap:8px;
-        }
-        .ar-panel .ar-actions{
-          flex-wrap:wrap;
-          gap:10px;
-        }
-        .ar-panel .ar-tableX{
-          width:100%;
-          overflow-x:auto;
-          -webkit-overflow-scrolling:touch;
-          padding-bottom:6px;
-        }
-        .ar-panel .ar-table{
-          width:100%;
-          min-width: 980px; /* evita “schiacciamenti brutti”: su tablet scorre, su desktop entra */
-        }
-        .ar-panel .ar-table th{
-          font-size: 12px;
-          line-height: 1.15;
-          white-space: nowrap;
-        }
-        .ar-panel .ar-table td{
-          font-size: 13px;
-          line-height: 1.25;
-        }
-        .ar-panel .ar-wrap{
-          max-width: 320px;
-          white-space: normal;
-          word-break: break-word;
-        }
+        .ar-panel .ar-pills{ display:flex; flex-wrap:wrap; gap:8px; }
+        .ar-panel .ar-actions{ flex-wrap:wrap; gap:10px; }
+        .ar-panel .ar-tableX{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+        .ar-panel .ar-table{ width:100%; min-width: 980px; }
+        .ar-panel .ar-table th{ font-size: 12px; line-height: 1.15; white-space: nowrap; }
+        .ar-panel .ar-table td{ font-size: 13px; line-height: 1.25; }
+        .ar-panel .ar-wrap{ max-width: 320px; white-space: normal; word-break: break-word; }
       `}</style>
     </div>
   );

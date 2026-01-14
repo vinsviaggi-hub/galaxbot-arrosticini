@@ -2,9 +2,7 @@
   min-height: 100vh;
   background: #f4f6fb;
   color: #0f172a;
-
-  /* evita scroll orizzontale della pagina: lo scroll lo fa SOLO la tabella */
-  overflow-x: hidden;
+  overflow-x: hidden; /* scroll laterale solo tabella */
 }
 
 .shell {
@@ -214,8 +212,7 @@
 }
 
 /* =========================
-   TABLE (stile "card" senza buchi)
-   + scroll laterale quando serve
+   TABLE
    ========================= */
 .tableWrap {
   margin-top: 14px;
@@ -234,7 +231,7 @@
   padding-bottom: 6px;
 }
 
-/* su schermi più stretti: tabella con larghezza minima (scroll) */
+/* min-width per scroll */
 .tableXScroll .table {
   min-width: 1100px;
 }
@@ -242,7 +239,7 @@
 .table {
   width: 100%;
   border-collapse: separate;
-  border-spacing: 0 12px; /* spazio tra le card */
+  border-spacing: 0 12px;
   padding: 12px;
 }
 
@@ -265,7 +262,6 @@
   border: 0;
 }
 
-/* linee verticali tra colonne */
 .row td + td {
   border-left: 1px solid rgba(15, 23, 42, 0.10);
 }
@@ -273,7 +269,6 @@
   border-left: 1px solid rgba(15, 23, 42, 0.14);
 }
 
-/* cornice continua */
 .row td:first-child {
   border-top-left-radius: 16px;
   border-bottom-left-radius: 16px;
@@ -282,7 +277,6 @@
     inset 0 2px 0 rgba(15, 23, 42, 0.65),
     inset 0 -2px 0 rgba(15, 23, 42, 0.65);
 }
-
 .row td:last-child {
   border-top-right-radius: 16px;
   border-bottom-right-radius: 16px;
@@ -291,7 +285,6 @@
     inset 0 2px 0 rgba(15, 23, 42, 0.65),
     inset 0 -2px 0 rgba(15, 23, 42, 0.65);
 }
-
 .row td:not(:first-child):not(:last-child) {
   box-shadow:
     inset 0 2px 0 rgba(15, 23, 42, 0.65),
@@ -329,19 +322,10 @@
   color: #0f172a;
   text-transform: lowercase;
   letter-spacing: 0.01em;
-  -webkit-text-stroke: 0;
-  text-shadow: none;
 }
 
-.tdStrong {
-  color: #0f172a;
-  font-weight: 950;
-}
-
-.tdTot {
-  font-weight: 950;
-  color: #0f172a;
-}
+.tdStrong { color: #0f172a; font-weight: 950; }
+.tdTot { font-weight: 950; color: #0f172a; }
 
 .tdWrap {
   max-width: 280px;
@@ -349,7 +333,6 @@
   word-break: break-word;
 }
 
-/* separatori 50|100|200 */
 .row td:nth-child(7),
 .row td:nth-child(8) {
   box-shadow:
@@ -381,10 +364,7 @@
   cursor: pointer;
 }
 
-.actionBtn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
+.actionBtn:disabled { opacity: 0.55; cursor: not-allowed; }
 
 .actionCall { background: rgba(15, 23, 42, 0.06); }
 .actionOk { background: rgba(22, 163, 74, 0.12); border-color: rgba(22, 163, 74, 0.30); }
@@ -411,46 +391,45 @@
 .badgeGray { background: rgba(15, 23, 42, 0.08); border-color: rgba(15, 23, 42, 0.16); }
 
 /* =========================
-   MOBILE CARDS
+   CARDS (NON decidono più loro chi mostrare)
+   React decide. Qui solo stile.
    ========================= */
 .mobileCards {
-  display: none;
+  display: grid;
   margin-top: 14px;
   gap: 12px;
 }
 
+/* ✅ CARD PIÙ COMPATTE (meno vuoto) */
 .mCard {
-  border-radius: 16px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.96);
   border: 2px solid rgba(15, 23, 42, 0.65);
-  padding: 12px;
+  padding: 10px; /* ↓ */
 }
 
-.mCardGold {
-  border-color: rgba(212, 175, 55, 0.98);
-}
+.mCardGold { border-color: rgba(212, 175, 55, 0.98); }
 
 .mTop {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
 }
 
 .mName {
   margin: 0;
   font-weight: 950;
-  font-size: 18px;
+  font-size: 16px; /* ↓ */
+  line-height: 1.05;
   color: #0f172a;
   text-transform: lowercase;
-  -webkit-text-stroke: 0;
-  text-shadow: none;
 }
 
 .mSub {
-  margin: 6px 0 0;
+  margin: 4px 0 0; /* ↓ */
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -458,58 +437,60 @@
   display: inline-flex;
   gap: 6px;
   align-items: center;
-  padding: 7px 10px;
+  padding: 6px 9px; /* ↓ */
   border-radius: 999px;
   border: 1px solid rgba(15, 23, 42, 0.14);
   background: rgba(15, 23, 42, 0.04);
   font-weight: 800;
-  font-size: 12px;
+  font-size: 11px; /* ↓ */
 }
 
 .mBadges {
   display: grid;
-  gap: 8px;
+  gap: 6px; /* ↓ */
   justify-items: end;
 }
 
 .mGrid {
-  margin-top: 12px;
+  margin-top: 10px; /* ↓ */
   display: grid;
-  gap: 10px;
+  gap: 8px; /* ↓ */
 }
 
 .mBox,
 .mBoxFull {
-  border-radius: 14px;
+  border-radius: 12px; /* ↓ */
   border: 1px solid rgba(15, 23, 42, 0.12);
   background: rgba(244, 246, 251, 0.8);
-  padding: 10px 12px;
+  padding: 8px 10px; /* ↓ */
 }
 
 .mBoxLabel {
   margin: 0;
-  font-size: 12px;
+  font-size: 11px; /* ↓ */
   font-weight: 950;
   opacity: 0.8;
 }
 
 .mBoxValue {
-  margin: 6px 0 0;
+  margin: 4px 0 0; /* ↓ */
   font-weight: 950;
   color: #0f172a;
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .mTot {
-  font-size: 18px;
+  font-size: 16px; /* ↓ */
   font-weight: 950;
   color: #0f172a;
 }
 
 .actionsMobile {
-  margin-top: 12px;
+  margin-top: 10px; /* ↓ */
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: 1fr;
+  gap: 8px; /* ↓ */
 }
 
 .footer {
@@ -521,29 +502,20 @@
 
 /* =========================
    TABLET: meno "zoomato"
-   (manteniamo la TABELLA visibile,
-    ma stringiamo font/padding)
    ========================= */
 @media (max-width: 1024px) {
   .shell { padding: 16px 12px 26px; }
-
   .headerInner { padding: 12px; }
-
   .h1 { font-size: 20px; }
-
   .btn, .soundChip { padding: 9px 10px; }
-
   .pill { padding: 9px 10px; font-size: 13px; }
 
   .tools { grid-template-columns: 1fr; }
   .range { justify-content: space-between; flex-wrap: wrap; }
 
-  /* tabella più compatta */
   .table { padding: 10px; border-spacing: 0 10px; }
   .th { font-size: 13px; padding: 8px 8px; }
   .td { padding: 10px 8px; font-size: 13px; }
-
-  /* scroll: min-width un filo più basso per tablet */
   .tableXScroll .table { min-width: 980px; }
 
   .actionBtn { padding: 9px 10px; font-size: 13px; }
@@ -551,42 +523,11 @@
 }
 
 /* =========================
-   PHONE: card di default + più compatte (meno vuoto)
+   PHONE: tolgo sticky, ma NON forzo più tabella/card
+   (React decide con AUTO/TABELLA/CARD)
    ========================= */
 @media (max-width: 760px) {
-  /* su telefono NON sticky */
   .header { position: static; }
-
-  /* AUTO: di default card */
-  .tableWrap { display: none; }
-  .mobileCards { display: grid; }
-
-  /* card più compatte */
-  .mobileCards { gap: 10px; margin-top: 12px; }
-
-  .mCard { padding: 10px; border-radius: 14px; }
-
-  .mTop { gap: 8px; }
-
-  .mName { font-size: 16px; line-height: 1.05; }
-
-  .mSub { margin-top: 4px; gap: 6px; }
-
-  .mPill { padding: 6px 9px; font-size: 11px; gap: 6px; }
-
-  .mBadges { gap: 6px; }
-
-  .mGrid { margin-top: 10px; gap: 8px; }
-
-  .mBox, .mBoxFull { padding: 8px 10px; border-radius: 12px; }
-
-  .mBoxLabel { font-size: 11px; }
-
-  .mBoxValue { margin-top: 4px; font-size: 13px; line-height: 1.2; }
-
-  .mTot { font-size: 16px; }
-
-  .actionsMobile { margin-top: 10px; gap: 8px; grid-template-columns: 1fr; }
-
-  .actionBtn { padding: 9px 10px; border-radius: 12px; font-size: 13px; }
+  .tools { grid-template-columns: 1fr; }
+  .range { justify-content: space-between; flex-wrap: wrap; }
 }
