@@ -129,19 +129,14 @@ function toBool(v: any): boolean {
 function normalizeBookingsOpen(payload: AnyJson): boolean | null {
   if (!payload) return null;
 
-  // forma: { ok:true, bookings_open:true }
   if (typeof payload.bookings_open !== "undefined") return toBool(payload.bookings_open);
-  // forma: { ok:true, bookingsOpen:true }
   if (typeof payload.bookingsOpen !== "undefined") return toBool(payload.bookingsOpen);
 
-  // forma: { ok:true, settings:{bookings_open:true} }
   if (typeof payload.settings?.bookings_open !== "undefined") return toBool(payload.settings.bookings_open);
   if (typeof payload.settings?.bookingsOpen !== "undefined") return toBool(payload.settings.bookingsOpen);
 
-  // forma: { ok:true, key:"bookings_open", bookingsOpen:true }
   if (payload.key === "bookings_open" && typeof payload.bookingsOpen !== "undefined") return toBool(payload.bookingsOpen);
 
-  // forma: { ok:true, value:true }
   if (typeof payload.value !== "undefined") return toBool(payload.value);
 
   return null;
@@ -164,7 +159,6 @@ export default function PannelloPrenotazioniPage() {
 
   /**
    * ✅ AUTO: CARD su tablet+telefono, TABella su desktop grande
-   * (così niente scroll laterale su tablet in orizzontale)
    */
   const [autoCards, setAutoCards] = useState(false);
   useEffect(() => {
@@ -217,27 +211,20 @@ export default function PannelloPrenotazioniPage() {
       return d;
     };
 
-    // ✅ 1) admin route (come il tuo app/api/admin/settings/route.ts): body.value
     try {
       const out = await tryPost("/api/admin/settings", { value: open });
       const v = normalizeBookingsOpen(out);
       if (v !== null) setBookingsOpen(v);
       return;
-    } catch {
-      // continua
-    }
+    } catch {}
 
-    // ✅ 2) fallback: alcuni progetti usano /api/settings con {key,value}
     try {
       const out = await tryPost("/api/settings", { key: "bookings_open", value: open });
       const v = normalizeBookingsOpen(out);
       if (v !== null) setBookingsOpen(v);
       return;
-    } catch {
-      // continua
-    }
+    } catch {}
 
-    // ✅ 3) fallback: vecchia forma action+bookings_open
     const out = await tryPost("/api/settings", { action: "set_bookings_open", bookings_open: open });
     const v = normalizeBookingsOpen(out);
     if (v !== null) setBookingsOpen(v);
@@ -253,11 +240,9 @@ export default function PannelloPrenotazioniPage() {
     setSettingsBusy(true);
     setErr("");
     try {
-      // UI ottimista
       setBookingsOpen(next);
       await setBookingsOpenRemote(next);
 
-      // ricarico subito e poi ancora dopo 1.2s per “consistenza” (Sheets/Script a volte ritarda)
       await loadSettings({ silent: true });
       window.setTimeout(() => void loadSettings({ silent: true }), 1200);
     } catch (e: any) {
@@ -750,9 +735,27 @@ export default function PannelloPrenotazioniPage() {
                         <td className={styles.td}>
                           <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
                         </td>
-                        <td className={`${styles.td} ${styles.mono}`}>{b.s50}</td>
-                        <td className={`${styles.td} ${styles.mono}`}>{b.s100}</td>
-                        <td className={`${styles.td} ${styles.mono}`}>{b.s200}</td>
+
+                        {/* ✅ FIX: su tablet/phone quando scrolli, capisci sempre che scatola è */}
+                        <td className={`${styles.td} ${styles.mono}`}>
+                          <div className="ar-qty">
+                            <span className="ar-qtyLabel">50:</span>
+                            <span>{b.s50}</span>
+                          </div>
+                        </td>
+                        <td className={`${styles.td} ${styles.mono}`}>
+                          <div className="ar-qty">
+                            <span className="ar-qtyLabel">100:</span>
+                            <span>{b.s100}</span>
+                          </div>
+                        </td>
+                        <td className={`${styles.td} ${styles.mono}`}>
+                          <div className="ar-qty">
+                            <span className="ar-qtyLabel">200:</span>
+                            <span>{b.s200}</span>
+                          </div>
+                        </td>
+
                         <td className={`${styles.td} ${styles.mono} ${styles.tdTot}`}>{b.tot}</td>
                         <td className={styles.td}>
                           <span className={badgeClass(b.stato)}>{b.stato}</span>
@@ -767,7 +770,12 @@ export default function PannelloPrenotazioniPage() {
                               </a>
                             ) : null}
 
-                            <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
+                            <button
+                              className={`${styles.actionBtn} ${styles.actionOk}`}
+                              type="button"
+                              disabled={isBusy || statoUp !== "NUOVA"}
+                              onClick={() => updateStatus(b, "CONFERMATA")}
+                            >
                               ✅ Conferma
                             </button>
 
@@ -926,14 +934,21 @@ export default function PannelloPrenotazioniPage() {
         .ar-panel .ar-pills{ display:flex; flex-wrap:wrap; gap:8px; }
         .ar-panel .ar-actions{ flex-wrap:wrap; gap:10px; }
 
-        /* tabella: resta scrollabile quando la forzi */
         .ar-panel .ar-tableX{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
         .ar-panel .ar-table{ width:100%; min-width: 980px; }
         .ar-panel .ar-table th{ font-size: 12px; line-height: 1.15; white-space: nowrap; }
         .ar-panel .ar-table td{ font-size: 13px; line-height: 1.25; }
         .ar-panel .ar-wrap{ max-width: 320px; white-space: normal; word-break: break-word; }
 
-        /* ✅ CARD: rendile “premium” e leggibili su tablet, anche in orizzontale */
+        /* ✅ FIX scatole: su schermi piccoli, fai vedere sempre l’etichetta (50/100/200) */
+        .ar-qty{ display:flex; align-items:center; gap:6px; }
+        .ar-qtyLabel{ opacity:.7; font-weight: 950; }
+        @media (min-width: 1101px){
+          /* su desktop grande non serve ripetere “50:” perché già vedi la colonna */
+          .ar-qtyLabel{ display:none; }
+        }
+
+        /* ✅ CARD: premium e leggibili su tablet */
         .ar-mCard{ padding: 12px; }
         .arCardTop{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
         .arMetaRow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
@@ -972,13 +987,11 @@ export default function PannelloPrenotazioniPage() {
         .arTotNum{ font-size: 22px; font-weight: 950; line-height: 1; }
         .arTotSub{ font-size: 12px; opacity: .75; font-weight: 900; margin-top: 4px; }
 
-        /* azioni: su tablet/landscape 3 colonne, su phone 1 colonna (lo fa il tuo css) */
         .arActions{ grid-template-columns: repeat(3, 1fr); }
         @media (max-width: 760px){
           .arActions{ grid-template-columns: 1fr; }
         }
 
-        /* ✅ LANDSCAPE tablet: 2 colonne nella card (tutto visibile, zero scroll laterale) */
         @media (min-width: 761px) and (max-width: 1100px){
           .arCardGrid{ grid-template-columns: 1.2fr .8fr; }
           .arFull{ grid-column: 1 / -1; }
