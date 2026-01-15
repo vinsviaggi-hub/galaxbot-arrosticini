@@ -22,9 +22,7 @@ type Booking = {
 type StatusFilter = "TUTTE" | "NUOVA" | "CONFERMATA" | "CONSEGNATA" | "ANNULLATA";
 type ViewMode = "AUTO" | "TABELLA" | "CARD";
 
-type SettingsResponse =
-  | { ok: true; bookings_open: boolean }
-  | { ok: false; error?: string; details?: any };
+type AnyJson = any;
 
 async function safeJson(res: Response) {
   const text = await res.text().catch(() => "");
@@ -121,6 +119,34 @@ function openWA(phoneRaw: string, text: string) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function toBool(v: any): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "y" || s === "on";
+}
+
+/** Accetta tutte le forme possibili: bookings_open / bookingsOpen / settings.bookings_open / {key, bookingsOpen} / value ... */
+function normalizeBookingsOpen(payload: AnyJson): boolean | null {
+  if (!payload) return null;
+
+  // forma: { ok:true, bookings_open:true }
+  if (typeof payload.bookings_open !== "undefined") return toBool(payload.bookings_open);
+  // forma: { ok:true, bookingsOpen:true }
+  if (typeof payload.bookingsOpen !== "undefined") return toBool(payload.bookingsOpen);
+
+  // forma: { ok:true, settings:{bookings_open:true} }
+  if (typeof payload.settings?.bookings_open !== "undefined") return toBool(payload.settings.bookings_open);
+  if (typeof payload.settings?.bookingsOpen !== "undefined") return toBool(payload.settings.bookingsOpen);
+
+  // forma: { ok:true, key:"bookings_open", bookingsOpen:true }
+  if (payload.key === "bookings_open" && typeof payload.bookingsOpen !== "undefined") return toBool(payload.bookingsOpen);
+
+  // forma: { ok:true, value:true }
+  if (typeof payload.value !== "undefined") return toBool(payload.value);
+
+  return null;
+}
+
 export default function PannelloPrenotazioniPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -136,10 +162,13 @@ export default function PannelloPrenotazioniPage() {
   // ✅ Vista: AUTO / TABELLA / CARD
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
 
-  // ✅ AUTO “vero”: CARD solo su telefono, TABella su tablet/desktop
+  /**
+   * ✅ AUTO: CARD su tablet+telefono, TABella su desktop grande
+   * (così niente scroll laterale su tablet in orizzontale)
+   */
   const [autoCards, setAutoCards] = useState(false);
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 640px)");
+    const mq = window.matchMedia("(max-width: 1100px)");
     const sync = () => setAutoCards(mq.matches);
     sync();
     try {
@@ -160,12 +189,13 @@ export default function PannelloPrenotazioniPage() {
     if (!opts?.silent) setSettingsLoading(true);
     try {
       const res = await fetch("/api/settings", { cache: "no-store" });
-      const data: SettingsResponse = await safeJson(res);
-      if (!(data as any)?.ok) {
+      const data: AnyJson = await safeJson(res);
+      if (!data?.ok) {
         setBookingsOpen(null);
         return;
       }
-      setBookingsOpen(Boolean((data as any).bookings_open));
+      const v = normalizeBookingsOpen(data);
+      setBookingsOpen(v);
     } catch {
       setBookingsOpen(null);
     } finally {
@@ -173,58 +203,63 @@ export default function PannelloPrenotazioniPage() {
     }
   };
 
+  /** POST robusto: prima admin (value), poi fallback */
   const setBookingsOpenRemote = async (open: boolean) => {
-    // prova prima admin endpoint (protetto da cookie admin)
-    const body = JSON.stringify({ action: "set_bookings_open", bookings_open: open });
-    let lastErr = "";
-
-    const tryPost = async (url: string) => {
+    const tryPost = async (url: string, bodyObj: any) => {
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
-        body,
+        body: JSON.stringify(bodyObj),
       });
-      const d: any = await safeJson(r);
-      if (!r.ok || !d?.ok) {
-        const msg = d?.error || `Errore impostando prenotazioni su ${url}`;
-        throw new Error(msg);
-      }
+      const d: AnyJson = await safeJson(r);
+      if (!r.ok || !d?.ok) throw new Error(d?.error || `Errore POST su ${url}`);
       return d;
     };
 
+    // ✅ 1) admin route (come il tuo app/api/admin/settings/route.ts): body.value
     try {
-      await tryPost("/api/admin/settings");
+      const out = await tryPost("/api/admin/settings", { value: open });
+      const v = normalizeBookingsOpen(out);
+      if (v !== null) setBookingsOpen(v);
       return;
-    } catch (e: any) {
-      lastErr = e?.message || "Errore";
+    } catch {
+      // continua
     }
 
-    // fallback: se usi lo stesso endpoint /api/settings anche in POST
+    // ✅ 2) fallback: alcuni progetti usano /api/settings con {key,value}
     try {
-      await tryPost("/api/settings");
+      const out = await tryPost("/api/settings", { key: "bookings_open", value: open });
+      const v = normalizeBookingsOpen(out);
+      if (v !== null) setBookingsOpen(v);
       return;
-    } catch (e: any) {
-      lastErr = e?.message || lastErr || "Errore";
+    } catch {
+      // continua
     }
 
-    throw new Error(lastErr || "Impossibile aggiornare lo stato prenotazioni.");
+    // ✅ 3) fallback: vecchia forma action+bookings_open
+    const out = await tryPost("/api/settings", { action: "set_bookings_open", bookings_open: open });
+    const v = normalizeBookingsOpen(out);
+    if (v !== null) setBookingsOpen(v);
   };
 
   const toggleBookings = async () => {
-    const next = !(bookingsOpen ?? true);
-    const ok = window.confirm(
-      next ? "Vuoi APRIRE le prenotazioni nell'app?" : "Vuoi CHIUDERE le prenotazioni nell'app?"
-    );
+    const current = bookingsOpen;
+    const next = !(current ?? true);
+
+    const ok = window.confirm(next ? "Vuoi APRIRE le prenotazioni nell'app?" : "Vuoi CHIUDERE le prenotazioni nell'app?");
     if (!ok) return;
 
     setSettingsBusy(true);
     setErr("");
     try {
-      // ottimismo UI
+      // UI ottimista
       setBookingsOpen(next);
       await setBookingsOpenRemote(next);
+
+      // ricarico subito e poi ancora dopo 1.2s per “consistenza” (Sheets/Script a volte ritarda)
       await loadSettings({ silent: true });
+      window.setTimeout(() => void loadSettings({ silent: true }), 1200);
     } catch (e: any) {
       await loadSettings({ silent: true });
       setErr(e?.message || "Errore aggiornando prenotazioni.");
@@ -235,8 +270,20 @@ export default function PannelloPrenotazioniPage() {
 
   useEffect(() => {
     void loadSettings({ silent: true });
-    const id = window.setInterval(() => void loadSettings({ silent: true }), 30_000);
-    return () => window.clearInterval(id);
+    const onVis = () => {
+      if (!document.hidden) void loadSettings({ silent: true });
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      void loadSettings({ silent: true });
+    }, 25_000);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(id);
+    };
   }, []);
 
   // evidenziazione oro solo per nuove arrivate mentre il pannello è aperto
@@ -289,9 +336,7 @@ export default function PannelloPrenotazioniPage() {
     if (newOnes.length === 0) return;
     if (document.hidden) return;
 
-    const ids = newOnes
-      .filter((b) => (b.stato || "").toUpperCase() === "NUOVA")
-      .map((b) => makeBookingId(b));
+    const ids = newOnes.filter((b) => (b.stato || "").toUpperCase() === "NUOVA").map((b) => makeBookingId(b));
 
     if (ids.length) {
       setGoldIds((prev) => {
@@ -442,16 +487,13 @@ export default function PannelloPrenotazioniPage() {
     return c;
   }, [rows]);
 
-  // ✅ ora supporta anche CONSEGNATA
   async function updateStatus(b: Booking, newStatus: "CONFERMATA" | "CONSEGNATA" | "ANNULLATA") {
     const id = makeBookingId(b);
     if (!id) return;
 
-    // WhatsApp: SOLO conferma/annulla (consegnata di solito no)
     if (newStatus === "CONFERMATA") openWA(b.telefono, waTextConfirm(b));
     if (newStatus === "ANNULLATA") openWA(b.telefono, waTextCancel(b));
 
-    // UI subito
     const prev = b.stato;
     setRows((old) => old.map((x) => (makeBookingId(x) === id ? { ...x, stato: newStatus } : x)));
     setGoldIds((old) => {
@@ -460,7 +502,6 @@ export default function PannelloPrenotazioniPage() {
       return next;
     });
 
-    // salva
     setBusyId(id);
     setErr("");
 
@@ -524,7 +565,6 @@ export default function PannelloPrenotazioniPage() {
               </div>
 
               <div className={`${styles.headerActions} ar-actions`}>
-                {/* ✅ Stato prenotazioni (app pubblica) */}
                 <span
                   className={styles.soundChip}
                   title="Stato prenotazioni (app)"
@@ -543,8 +583,7 @@ export default function PannelloPrenotazioniPage() {
                         : "rgba(220,38,38,0.08)",
                   }}
                 >
-                  {settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"} Prenotazioni:{" "}
-                  <b>{bookingsLabel}</b>
+                  {settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"} Prenotazioni: <b>{bookingsLabel}</b>
                 </span>
 
                 <button
@@ -590,43 +629,23 @@ export default function PannelloPrenotazioniPage() {
                 <p className={styles.metricLabel}>Stati</p>
 
                 <div className={`${styles.pills} ar-pills`}>
-                  <button
-                    className={`${styles.pill} ${status === "NUOVA" ? styles.pillActive : ""}`}
-                    onClick={() => setStatus("NUOVA")}
-                    type="button"
-                  >
+                  <button className={`${styles.pill} ${status === "NUOVA" ? styles.pillActive : ""}`} onClick={() => setStatus("NUOVA")} type="button">
                     <span className={`${styles.dot} ${styles.dotNew}`} />
                     NUOVA <b>({counts.NUOVA})</b>
                   </button>
-                  <button
-                    className={`${styles.pill} ${status === "CONFERMATA" ? styles.pillActive : ""}`}
-                    onClick={() => setStatus("CONFERMATA")}
-                    type="button"
-                  >
+                  <button className={`${styles.pill} ${status === "CONFERMATA" ? styles.pillActive : ""}`} onClick={() => setStatus("CONFERMATA")} type="button">
                     <span className={`${styles.dot} ${styles.dotConf}`} />
                     CONFERMATA <b>({counts.CONFERMATA})</b>
                   </button>
-                  <button
-                    className={`${styles.pill} ${status === "CONSEGNATA" ? styles.pillActive : ""}`}
-                    onClick={() => setStatus("CONSEGNATA")}
-                    type="button"
-                  >
+                  <button className={`${styles.pill} ${status === "CONSEGNATA" ? styles.pillActive : ""}`} onClick={() => setStatus("CONSEGNATA")} type="button">
                     <span className={`${styles.dot} ${styles.dotCons}`} />
                     CONSEGNATA <b>({counts.CONSEGNATA})</b>
                   </button>
-                  <button
-                    className={`${styles.pill} ${status === "ANNULLATA" ? styles.pillActive : ""}`}
-                    onClick={() => setStatus("ANNULLATA")}
-                    type="button"
-                  >
+                  <button className={`${styles.pill} ${status === "ANNULLATA" ? styles.pillActive : ""}`} onClick={() => setStatus("ANNULLATA")} type="button">
                     <span className={`${styles.dot} ${styles.dotAnn}`} />
                     ANNULLATA <b>({counts.ANNULLATA})</b>
                   </button>
-                  <button
-                    className={`${styles.pill} ${status === "TUTTE" ? styles.pillActive : ""}`}
-                    onClick={() => setStatus("TUTTE")}
-                    type="button"
-                  >
+                  <button className={`${styles.pill} ${status === "TUTTE" ? styles.pillActive : ""}`} onClick={() => setStatus("TUTTE")} type="button">
                     <span className={`${styles.dot} ${styles.dotAll}`} />
                     TUTTE <b>({counts.TUTTE})</b>
                   </button>
@@ -636,12 +655,7 @@ export default function PannelloPrenotazioniPage() {
 
             <div className={styles.tools}>
               <div className={styles.search}>
-                <input
-                  className={styles.input}
-                  placeholder="Cerca: nome, telefono, data, stato, note..."
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
+                <input className={styles.input} placeholder="Cerca: nome, telefono, data, stato, note..." value={q} onChange={(e) => setQ(e.target.value)} />
               </div>
 
               <div className={styles.range}>
@@ -677,7 +691,7 @@ export default function PannelloPrenotazioniPage() {
           </div>
         ) : null}
 
-        {/* TABELLA */}
+        {/* TABELLA (desktop grande o forza TABELLA) */}
         <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"} style={!showTable ? { display: "none" } : undefined}>
           <div className="ar-tableX">
             <table className={`${styles.table} ar-table`}>
@@ -688,10 +702,10 @@ export default function PannelloPrenotazioniPage() {
                   <th className={styles.th}>Cliente</th>
                   <th className={styles.th}>Telefono</th>
                   <th className={styles.th}>Tipo</th>
-                  <th className={styles.th}>Scatole 50pz</th>
-                  <th className={styles.th}>Scatole 100pz</th>
-                  <th className={styles.th}>Scatole 200pz</th>
-                  <th className={styles.th}>Tot pezzi</th>
+                  <th className={styles.th}>50</th>
+                  <th className={styles.th}>100</th>
+                  <th className={styles.th}>200</th>
+                  <th className={styles.th}>Tot</th>
                   <th className={styles.th}>Stato</th>
                   <th className={styles.th}>Indirizzo</th>
                   <th className={styles.th}>Note</th>
@@ -753,12 +767,7 @@ export default function PannelloPrenotazioniPage() {
                               </a>
                             ) : null}
 
-                            <button
-                              className={`${styles.actionBtn} ${styles.actionOk}`}
-                              type="button"
-                              disabled={isBusy || statoUp !== "NUOVA"}
-                              onClick={() => updateStatus(b, "CONFERMATA")}
-                            >
+                            <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
                               ✅ Conferma
                             </button>
 
@@ -773,12 +782,7 @@ export default function PannelloPrenotazioniPage() {
                               📦 Consegnata
                             </button>
 
-                            <button
-                              className={`${styles.actionBtn} ${styles.actionNo}`}
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => updateStatus(b, "ANNULLATA")}
-                            >
+                            <button className={`${styles.actionBtn} ${styles.actionNo}`} type="button" disabled={isBusy} onClick={() => updateStatus(b, "ANNULLATA")}>
                               ❌ Annulla
                             </button>
 
@@ -798,12 +802,12 @@ export default function PannelloPrenotazioniPage() {
           </div>
         </div>
 
-        {/* CARD */}
+        {/* CARD (tablet+telefono in AUTO, o forza CARD) */}
         <div className={styles.mobileCards} style={!showCards ? { display: "none" } : undefined}>
           {loading ? (
-            <div className={styles.mCard}>Caricamento…</div>
+            <div className={`${styles.mCard} ar-mCard`}>Caricamento…</div>
           ) : filtered.length === 0 ? (
-            <div className={styles.mCard}>Nessun risultato.</div>
+            <div className={`${styles.mCard} ar-mCard`}>Nessun risultato.</div>
           ) : (
             filtered.map((b, idx) => {
               const id = makeBookingId(b);
@@ -820,81 +824,83 @@ export default function PannelloPrenotazioniPage() {
               const statoUp = (b.stato || "").toUpperCase();
 
               return (
-                <div key={`${id}-m-${idx}`} className={`${styles.mCard} ${isGold ? styles.mCardGold : ""}`}>
-                  <div className={styles.mTop}>
-                    <div>
+                <div key={`${id}-m-${idx}`} className={`${styles.mCard} ar-mCard ${isGold ? styles.mCardGold : ""}`}>
+                  <div className="arCardTop">
+                    <div className="arLeft">
                       <p className={styles.mName}>{b.nome}</p>
-                      <p className={styles.mSub}>
-                        <span className={styles.mPill}>
-                          📅 {formatDateIT(b.dataISO)} • <b className={styles.mono}>{b.ora}</b>
-                        </span>{" "}
-                        <span className={styles.mPill}>
-                          📞 <span className={styles.mono}>{b.telefono}</span>
+
+                      <div className="arMetaRow">
+                        <span className="arChip">
+                          📅 <b>{formatDateIT(b.dataISO)}</b>
                         </span>
-                      </p>
+                        <span className="arChip">
+                          🕒 <b className={styles.mono}>{b.ora}</b>
+                        </span>
+                        <span className="arChip">
+                          📞 <b className={styles.mono}>{b.telefono}</b>
+                        </span>
+                      </div>
                     </div>
-                    <div className={styles.mBadges}>
-                      <span className={badgeClass(b.stato)}>{b.stato}</span>
-                      <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
+
+                    <div className="arRight">
+                      <div className="arBadges">
+                        <span className={badgeClass(b.stato)}>{b.stato}</span>
+                        <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className={styles.mGrid}>
-                    <div className={styles.mBox}>
-                      <p className={styles.mBoxLabel}>Scatole</p>
-                      <p className={styles.mBoxValue}>
-                        50: <b>{b.s50}</b> • 100: <b>{b.s100}</b> • 200: <b>{b.s200}</b>
-                      </p>
+                  <div className="arCardGrid">
+                    <div className="arBlock">
+                      <div className="arBlockTitle">Scatole</div>
+                      <div className="arBoxes">
+                        <span className="arBoxPill">
+                          50: <b>{b.s50}</b>
+                        </span>
+                        <span className="arBoxPill">
+                          100: <b>{b.s100}</b>
+                        </span>
+                        <span className="arBoxPill">
+                          200: <b>{b.s200}</b>
+                        </span>
+                      </div>
                     </div>
 
-                    <div className={styles.mBox}>
-                      <p className={styles.mBoxLabel}>Totale</p>
-                      <p className={`${styles.mBoxValue} ${styles.mTot}`}>{b.tot}</p>
+                    <div className="arBlock arTot">
+                      <div className="arBlockTitle">Totale</div>
+                      <div className="arTotNum">{b.tot}</div>
+                      <div className="arTotSub">pezzi</div>
                     </div>
 
-                    <div className={styles.mBoxFull}>
-                      <p className={styles.mBoxLabel}>Indirizzo</p>
-                      <p className={styles.mBoxValue}>{b.indirizzo || "—"}</p>
+                    <div className="arBlock arFull">
+                      <div className="arBlockTitle">Indirizzo</div>
+                      <div className="arText">{b.indirizzo || "—"}</div>
                     </div>
 
-                    <div className={styles.mBoxFull}>
-                      <p className={styles.mBoxLabel}>Note</p>
-                      <p className={styles.mBoxValue}>{b.note || "—"}</p>
+                    <div className="arBlock arFull">
+                      <div className="arBlockTitle">Note</div>
+                      <div className="arText">{b.note || "—"}</div>
                     </div>
                   </div>
 
-                  <div className={styles.actionsMobile}>
+                  <div className={`${styles.actionsMobile} arActions`}>
                     {telHref ? (
                       <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
                         📞 Chiama
                       </a>
-                    ) : null}
+                    ) : (
+                      <span />
+                    )}
 
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionOk}`}
-                      type="button"
-                      disabled={isBusy || statoUp !== "NUOVA"}
-                      onClick={() => updateStatus(b, "CONFERMATA")}
-                    >
+                    <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
                       ✅ Conferma
                     </button>
 
-                    <button
-                      className={`${styles.actionBtn} ar-actionDone`}
-                      style={consegnataBtnStyle}
-                      type="button"
-                      disabled={isBusy || statoUp !== "CONFERMATA"}
-                      onClick={() => updateStatus(b, "CONSEGNATA")}
-                    >
+                    <button className={`${styles.actionBtn} ar-actionDone`} style={consegnataBtnStyle} type="button" disabled={isBusy || statoUp !== "CONFERMATA"} onClick={() => updateStatus(b, "CONSEGNATA")}>
                       📦 Consegnata
                     </button>
 
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionNo}`}
-                      type="button"
-                      disabled={isBusy}
-                      onClick={() => updateStatus(b, "ANNULLATA")}
-                    >
+                    <button className={`${styles.actionBtn} ${styles.actionNo}`} type="button" disabled={isBusy} onClick={() => updateStatus(b, "ANNULLATA")}>
                       ❌ Annulla
                     </button>
 
@@ -902,7 +908,9 @@ export default function PannelloPrenotazioniPage() {
                       <a className={`${styles.actionBtn} ${styles.actionMap}`} href={mapHref} target="_blank" rel="noreferrer">
                         📍 Maps
                       </a>
-                    ) : null}
+                    ) : (
+                      <span />
+                    )}
                   </div>
                 </div>
               );
@@ -913,15 +921,70 @@ export default function PannelloPrenotazioniPage() {
         <div className={styles.footer}>GalaxBot • Pannello prenotazioni</div>
       </div>
 
-      {/* ✅ patch minima: table scroll + wrap pills su tablet */}
+      {/* Patch + nuova grafica card tablet/landscape senza scroll laterale */}
       <style>{`
         .ar-panel .ar-pills{ display:flex; flex-wrap:wrap; gap:8px; }
         .ar-panel .ar-actions{ flex-wrap:wrap; gap:10px; }
+
+        /* tabella: resta scrollabile quando la forzi */
         .ar-panel .ar-tableX{ width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
         .ar-panel .ar-table{ width:100%; min-width: 980px; }
         .ar-panel .ar-table th{ font-size: 12px; line-height: 1.15; white-space: nowrap; }
         .ar-panel .ar-table td{ font-size: 13px; line-height: 1.25; }
         .ar-panel .ar-wrap{ max-width: 320px; white-space: normal; word-break: break-word; }
+
+        /* ✅ CARD: rendile “premium” e leggibili su tablet, anche in orizzontale */
+        .ar-mCard{ padding: 12px; }
+        .arCardTop{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+        .arMetaRow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+        .arChip{
+          display:inline-flex; align-items:center; gap:6px;
+          padding:6px 10px; border-radius:999px;
+          border:1px solid rgba(15,23,42,0.14);
+          background: rgba(15,23,42,0.04);
+          font-weight: 800; font-size: 12px;
+        }
+        .arBadges{ display:grid; gap:8px; justify-items:end; }
+
+        .arCardGrid{
+          margin-top: 12px;
+          display:grid;
+          grid-template-columns: 1fr;
+          gap:10px;
+        }
+        .arBlock{
+          border-radius: 14px;
+          border:1px solid rgba(15,23,42,0.12);
+          background: rgba(244,246,251,0.8);
+          padding:10px 12px;
+        }
+        .arBlockTitle{ font-size: 12px; font-weight: 950; opacity: .8; margin-bottom: 6px; }
+        .arText{ font-weight: 900; line-height: 1.25; word-break: break-word; }
+        .arBoxes{ display:flex; flex-wrap:wrap; gap:8px; }
+        .arBoxPill{
+          display:inline-flex; gap:6px; align-items:center;
+          padding:7px 10px; border-radius: 999px;
+          border:1px solid rgba(15,23,42,0.14);
+          background: rgba(255,255,255,0.95);
+          font-weight: 950;
+        }
+        .arTot{ text-align:center; }
+        .arTotNum{ font-size: 22px; font-weight: 950; line-height: 1; }
+        .arTotSub{ font-size: 12px; opacity: .75; font-weight: 900; margin-top: 4px; }
+
+        /* azioni: su tablet/landscape 3 colonne, su phone 1 colonna (lo fa il tuo css) */
+        .arActions{ grid-template-columns: repeat(3, 1fr); }
+        @media (max-width: 760px){
+          .arActions{ grid-template-columns: 1fr; }
+        }
+
+        /* ✅ LANDSCAPE tablet: 2 colonne nella card (tutto visibile, zero scroll laterale) */
+        @media (min-width: 761px) and (max-width: 1100px){
+          .arCardGrid{ grid-template-columns: 1.2fr .8fr; }
+          .arFull{ grid-column: 1 / -1; }
+          .arTot{ display:flex; flex-direction:column; justify-content:center; }
+          .arTotNum{ font-size: 24px; }
+        }
       `}</style>
     </div>
   );

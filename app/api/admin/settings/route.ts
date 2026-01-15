@@ -8,6 +8,14 @@ function env(name: string) {
   return (process.env[name] || "").trim();
 }
 
+function jsonNoStore(body: any, init?: { status?: number }) {
+  const res = NextResponse.json(body, { status: init?.status ?? 200 });
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.headers.set("Pragma", "no-cache");
+  res.headers.set("Expires", "0");
+  return res;
+}
+
 async function callGoogleScript(body: any) {
   const url = env("GOOGLE_SCRIPT_URL");
   const secret = env("GOOGLE_SCRIPT_SECRET");
@@ -33,7 +41,6 @@ function readBoolLoose(body: any): { ok: true; value: boolean } | { ok: false; e
     return { ok: false, error: "Manca 'value' (o 'open' / 'bookings_open') nel body." };
   }
 
-  // accetta boolean, "true"/"false", 1/0, "1"/"0"
   if (raw === true || raw === false) return { ok: true, value: raw };
   if (raw === 1 || raw === "1") return { ok: true, value: true };
   if (raw === 0 || raw === "0") return { ok: true, value: false };
@@ -42,8 +49,20 @@ function readBoolLoose(body: any): { ok: true; value: boolean } | { ok: false; e
   if (["true", "yes", "y", "on"].includes(s)) return { ok: true, value: true };
   if (["false", "no", "n", "off"].includes(s)) return { ok: true, value: false };
 
-  // fallback: boolean JS, ma almeno è esplicito
   return { ok: true, value: !!raw };
+}
+
+function extractBookingsOpen(data: any): boolean | null {
+  const v =
+    data?.bookings_open ??
+    data?.bookingsOpen ??
+    data?.settings?.bookings_open ??
+    data?.settings?.bookingsOpen;
+
+  if (v === undefined || v === null) return null;
+  if (typeof v === "boolean") return v;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes" || s === "on";
 }
 
 // ✅ POST /api/admin/settings  -> set bookings_open true/false
@@ -52,9 +71,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
 
     const parsed = readBoolLoose(body);
-    if (!parsed.ok) {
-      return NextResponse.json({ ok: false, error: parsed.error }, { status: 400 });
-    }
+    if (!parsed.ok) return jsonNoStore({ ok: false, error: parsed.error }, { status: 400 });
 
     const { ok, status, data } = await callGoogleScript({
       action: "setBookingsOpen",
@@ -62,29 +79,42 @@ export async function POST(req: Request) {
     });
 
     if (!ok || !data?.ok) {
-      return NextResponse.json(
+      return jsonNoStore(
         { ok: false, error: data?.error || "Errore setBookingsOpen." },
         { status: status || 500 }
       );
     }
 
-    return NextResponse.json({ ok: true, settings: data.settings }, { status: 200 });
+    const bookings_open = extractBookingsOpen(data) ?? parsed.value;
+
+    return jsonNoStore(
+      { ok: true, bookings_open, settings: data.settings },
+      { status: 200 }
+    );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Errore server." }, { status: 500 });
+    return jsonNoStore({ ok: false, error: e?.message || "Errore server." }, { status: 500 });
   }
 }
 
-// (opzionale) GET admin settings
+// ✅ GET /api/admin/settings -> legge settings (no-cache)
 export async function GET() {
   try {
     const { ok, status, data } = await callGoogleScript({ action: "getSettings" });
 
     if (!ok || !data?.ok) {
-      return NextResponse.json({ ok: false, error: data?.error || "Errore settings." }, { status: status || 500 });
+      return jsonNoStore(
+        { ok: false, error: data?.error || "Errore settings." },
+        { status: status || 500 }
+      );
     }
 
-    return NextResponse.json({ ok: true, settings: data.settings }, { status: 200 });
+    const bookings_open = extractBookingsOpen(data);
+
+    return jsonNoStore(
+      { ok: true, bookings_open, settings: data.settings },
+      { status: 200 }
+    );
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Errore server." }, { status: 500 });
+    return jsonNoStore({ ok: false, error: e?.message || "Errore server." }, { status: 500 });
   }
 }

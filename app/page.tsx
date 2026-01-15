@@ -40,10 +40,8 @@ async function safeJson(res: Response) {
 }
 
 export default function Page() {
-  // ✅ chat nascosta finché non clicca
+  // chat nascosta finché non clicca
   const [assistantOpen, setAssistantOpen] = useState(false);
-
-  // Ref per scroll sulla chat quando si apre
   const assistantRef = useRef<HTMLElement | null>(null);
 
   function openAssistant() {
@@ -68,7 +66,7 @@ export default function Page() {
     });
   }
 
-  // ✅ PRENOTAZIONI APERTE/CHIUSE (collegate al pannello via /api/settings)
+  // PRENOTAZIONI APERTE/CHIUSE (collegate al pannello via /api/settings)
   const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
 
@@ -84,10 +82,8 @@ export default function Page() {
         return;
       }
 
-      // ✅ supporta sia {ok:true, settings:{bookings_open:true}} sia {ok:true, bookings_open:true}
-      const open =
-        (data as any)?.settings?.bookings_open ??
-        (data as any)?.bookings_open;
+      // supporta sia {ok:true, settings:{bookings_open:true}} sia {ok:true, bookings_open:true}
+      const open = (data as any)?.settings?.bookings_open ?? (data as any)?.bookings_open;
 
       if (typeof open !== "boolean") {
         setBookingsOpen(null);
@@ -120,6 +116,7 @@ export default function Page() {
       document.removeEventListener("visibilitychange", onVis);
       window.clearInterval(id);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
@@ -318,7 +315,6 @@ export default function Page() {
                 </h1>
                 <p className="heroTag">{TAGLINE}</p>
 
-                {/* ✅ Stato prenotazioni (collegato al pannello) */}
                 <div
                   className="statusPill"
                   title="Stato prenotazioni"
@@ -337,12 +333,19 @@ export default function Page() {
                         : "rgba(255,75,75,0.16)",
                   }}
                 >
-                  <span className="statusIcon">{settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"}</span>
+                  <span className="statusIcon">
+                    {settingsLoading ? "⏳" : bookingsOpen ? "✅" : bookingsOpen === false ? "⛔️" : "ℹ️"}
+                  </span>
                   <span>
                     Prenotazioni: <b>{bookingsLabel}</b>
                   </span>
 
-                  <button type="button" className="statusReload" onClick={() => void loadSettings({ silent: false })} title="Ricarica stato">
+                  <button
+                    type="button"
+                    className="statusReload"
+                    onClick={() => void loadSettings({ silent: false })}
+                    title="Ricarica stato"
+                  >
                     🔄
                   </button>
                 </div>
@@ -539,7 +542,6 @@ export default function Page() {
             </div>
           </section>
 
-          {/* CHAT */}
           <section
             ref={(el) => {
               assistantRef.current = el;
@@ -549,7 +551,10 @@ export default function Page() {
             aria-hidden={assistantOpen ? "false" : "true"}
           >
             <div className="cardInner">
-              <div className="sectionHead" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <div
+                className="sectionHead"
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+              >
                 <div>
                   <h2 className="sectionTitle">Assistenza</h2>
                   <p className="sectionSub">Domande rapide su ritiro/consegna e info generali.</p>
@@ -565,7 +570,6 @@ export default function Page() {
           </section>
         </main>
 
-        {/* ✅ barra mobile: 1 solo bottone */}
         <div className="stickyBarOne">
           <button
             className="stickyBtnOne primary"
