@@ -22,6 +22,9 @@ type Booking = {
 type StatusFilter = "TUTTE" | "NUOVA" | "CONFERMATA" | "CONSEGNATA" | "ANNULLATA";
 type ViewMode = "AUTO" | "TABELLA" | "CARD";
 
+// ✅ NUOVO: filtro tipo con 1 solo tasto (cicla)
+type TypeFilter = "TUTTI" | "CONSEGNA" | "RITIRO";
+
 type AnyJson = any;
 
 async function safeJson(res: Response) {
@@ -112,11 +115,20 @@ function waTextConfirm(b: Booking) {
 function waTextCancel(b: Booking) {
   return `Ciao ${b.nome}, ❌ la tua prenotazione del ${formatDateIT(b.dataISO)} alle ${b.ora} è stata ANNULLATA. Se vuoi riprenotare scrivici qui.`;
 }
+
+/** ✅ FIX WhatsApp: più stabile di window.open su iOS/Android/PWA */
 function openWA(phoneRaw: string, text: string) {
   const phone = normalizePhone(phoneRaw).replace("+", "");
   if (!phone) return;
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
-  window.open(url, "_blank", "noopener,noreferrer");
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function toBool(v: any): boolean {
@@ -151,6 +163,9 @@ export default function PannelloPrenotazioniPage() {
   const [status, setStatus] = useState<StatusFilter>("TUTTE");
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
+
+  // ✅ NUOVO: filtro tipo (1 tasto che cicla)
+  const [tipo, setTipo] = useState<TypeFilter>("TUTTI");
 
   const [soundOn, setSoundOn] = useState(true);
 
@@ -303,8 +318,26 @@ export default function PannelloPrenotazioniPage() {
     } catch {}
   }, [viewMode]);
 
+  // ✅ carica/salva tipo
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("galax_admin_type_filter");
+      if (v === "TUTTI" || v === "CONSEGNA" || v === "RITIRO") setTipo(v);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("galax_admin_type_filter", tipo);
+    } catch {}
+  }, [tipo]);
+
   const cycleViewMode = () => {
     setViewMode((v) => (v === "AUTO" ? "TABELLA" : v === "TABELLA" ? "CARD" : "AUTO"));
+  };
+
+  // ✅ 1 tasto che cicla: TUTTI → CONSEGNA → RITIRO → TUTTI
+  const cycleTipo = () => {
+    setTipo((t) => (t === "TUTTI" ? "CONSEGNA" : t === "CONSEGNA" ? "RITIRO" : "TUTTI"));
   };
 
   const maybeNotifyNewRows = (list: Booking[]) => {
@@ -448,17 +481,31 @@ export default function PannelloPrenotazioniPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [soundOn]);
 
+  /** ✅ FIX pagina bianca quando torni indietro da WhatsApp */
+  useEffect(() => {
+    const onPageShow = () => {
+      void load(true);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return rows.filter((r) => {
       if (status !== "TUTTE" && r.stato !== status) return false;
+
+      // ✅ filtro tipo (se non è TUTTI)
+      if (tipo !== "TUTTI" && r.tipo !== tipo) return false;
+
       if (from && r.dataISO && r.dataISO < from) return false;
       if (to && r.dataISO && r.dataISO > to) return false;
       if (!qq) return true;
       const blob = [r.nome, r.telefono, r.tipo, r.dataISO, r.ora, r.stato, r.indirizzo, r.note].join(" ").toLowerCase();
       return blob.includes(qq);
     });
-  }, [rows, q, status, from, to]);
+  }, [rows, q, status, tipo, from, to]);
 
   const counts = useMemo(() => {
     const c = { NUOVA: 0, CONFERMATA: 0, CONSEGNATA: 0, ANNULLATA: 0, TUTTE: rows.length };
@@ -533,6 +580,10 @@ export default function PannelloPrenotazioniPage() {
   };
 
   const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
+
+  // ✅ label tasto tipo (pulito)
+  const tipoLabel = tipo === "TUTTI" ? "Tutti" : tipo === "CONSEGNA" ? "Consegna" : "Ritiro";
+  const tipoIcon = tipo === "TUTTI" ? "🔁" : tipo === "CONSEGNA" ? "🚚" : "🧺";
 
   return (
     <div className={`${styles.page} ar-panel`}>
@@ -650,6 +701,11 @@ export default function PannelloPrenotazioniPage() {
                 <input className={styles.dateInput} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
               </div>
 
+              {/* ✅ NUOVO: 1 tasto pulito per Tipo */}
+              <button className={styles.btn} type="button" onClick={cycleTipo} title="Filtra per tipo (cicla)">
+                {tipoIcon} Tipo: <b>{tipoLabel}</b>
+              </button>
+
               <button
                 className={styles.btn}
                 type="button"
@@ -658,6 +714,7 @@ export default function PannelloPrenotazioniPage() {
                   setFrom("");
                   setTo("");
                   setStatus("TUTTE");
+                  setTipo("TUTTI"); // ✅ reset anche tipo
                 }}
               >
                 Reset
@@ -676,7 +733,7 @@ export default function PannelloPrenotazioniPage() {
           </div>
         ) : null}
 
-        {/* TABELLA (desktop grande o forza TABELLA) */}
+        {/* TABELLA */}
         <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"} style={!showTable ? { display: "none" } : undefined}>
           <div className="ar-tableX">
             <table className={`${styles.table} ar-table`}>
@@ -736,7 +793,7 @@ export default function PannelloPrenotazioniPage() {
                           <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
                         </td>
 
-                        {/* ✅ FIX: su tablet/phone quando scrolli, capisci sempre che scatola è */}
+                        {/* ✅ FIX scatole: su schermi piccoli vedi sempre 50/100/200 */}
                         <td className={`${styles.td} ${styles.mono}`}>
                           <div className="ar-qty">
                             <span className="ar-qtyLabel">50:</span>
@@ -770,12 +827,7 @@ export default function PannelloPrenotazioniPage() {
                               </a>
                             ) : null}
 
-                            <button
-                              className={`${styles.actionBtn} ${styles.actionOk}`}
-                              type="button"
-                              disabled={isBusy || statoUp !== "NUOVA"}
-                              onClick={() => updateStatus(b, "CONFERMATA")}
-                            >
+                            <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
                               ✅ Conferma
                             </button>
 
@@ -810,7 +862,7 @@ export default function PannelloPrenotazioniPage() {
           </div>
         </div>
 
-        {/* CARD (tablet+telefono in AUTO, o forza CARD) */}
+        {/* CARD */}
         <div className={styles.mobileCards} style={!showCards ? { display: "none" } : undefined}>
           {loading ? (
             <div className={`${styles.mCard} ar-mCard`}>Caricamento…</div>
@@ -929,7 +981,6 @@ export default function PannelloPrenotazioniPage() {
         <div className={styles.footer}>GalaxBot • Pannello prenotazioni</div>
       </div>
 
-      {/* Patch + nuova grafica card tablet/landscape senza scroll laterale */}
       <style>{`
         .ar-panel .ar-pills{ display:flex; flex-wrap:wrap; gap:8px; }
         .ar-panel .ar-actions{ flex-wrap:wrap; gap:10px; }
@@ -940,15 +991,14 @@ export default function PannelloPrenotazioniPage() {
         .ar-panel .ar-table td{ font-size: 13px; line-height: 1.25; }
         .ar-panel .ar-wrap{ max-width: 320px; white-space: normal; word-break: break-word; }
 
-        /* ✅ FIX scatole: su schermi piccoli, fai vedere sempre l’etichetta (50/100/200) */
+        /* ✅ FIX scatole: su schermi piccoli fai vedere sempre l’etichetta */
         .ar-qty{ display:flex; align-items:center; gap:6px; }
         .ar-qtyLabel{ opacity:.7; font-weight: 950; }
         @media (min-width: 1101px){
-          /* su desktop grande non serve ripetere “50:” perché già vedi la colonna */
           .ar-qtyLabel{ display:none; }
         }
 
-        /* ✅ CARD: premium e leggibili su tablet */
+        /* CARD */
         .ar-mCard{ padding: 12px; }
         .arCardTop{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
         .arMetaRow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }

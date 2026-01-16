@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
@@ -18,6 +18,7 @@ export default function AdminLoginPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ password }),
+      cache: "no-store",
     }).catch(() => null);
 
     setLoading(false);
@@ -33,7 +34,21 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 20 }}>
+    <div
+      style={{
+        minHeight: "100svh", // ✅ meglio di 100vh su iOS (barra browser cambia)
+        display: "grid",
+        placeItems: "center",
+        padding: 20,
+        background: "linear-gradient(180deg, #0b1020, #070a12)",
+      }}
+    >
+      {/* Patch SOLO per questa pagina */}
+      <style>{`
+        html, body { -webkit-text-size-adjust: 100%; }
+        * { box-sizing: border-box; }
+      `}</style>
+
       <form
         onSubmit={onLogin}
         style={{
@@ -42,10 +57,22 @@ export default function AdminLoginPage() {
           border: "1px solid rgba(255,255,255,.18)",
           borderRadius: 16,
           padding: 18,
+          boxShadow: "0 20px 60px rgba(0,0,0,.35)",
         }}
       >
-        <h1 style={{ fontSize: 20, marginBottom: 10 }}>🔒 Pannello Prenotazioni</h1>
-        <div style={{ fontSize: 13, opacity: 0.85, marginBottom: 12 }}>
+        <h1 style={{ fontSize: 20, marginBottom: 10, color: "white" }}>
+          🔒 Pannello Prenotazioni
+        </h1>
+
+        <div
+          style={{
+            fontSize: 14,
+            opacity: 0.88,
+            marginBottom: 12,
+            color: "rgba(255,255,255,.85)",
+            lineHeight: 1.3,
+          }}
+        >
           Inserisci la password per vedere le prenotazioni.
         </div>
 
@@ -54,6 +81,8 @@ export default function AdminLoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           type="password"
           placeholder="Password"
+          autoComplete="current-password"
+          inputMode="text"
           style={{
             width: "100%",
             padding: "12px 12px",
@@ -62,11 +91,13 @@ export default function AdminLoginPage() {
             background: "rgba(255,255,255,.06)",
             color: "white",
             outline: "none",
+            fontSize: 16, // ✅ FIX anti-zoom iPhone (sotto 16px zooma)
           }}
         />
 
         <button
           disabled={loading}
+          type="submit"
           style={{
             marginTop: 12,
             width: "100%",
@@ -75,6 +106,7 @@ export default function AdminLoginPage() {
             border: "none",
             background: "linear-gradient(90deg, #ff3b30, #ffcc00)",
             fontWeight: 900,
+            fontSize: 16,
             color: "rgba(16,20,30,.92)",
             cursor: "pointer",
             opacity: loading ? 0.7 : 1,
