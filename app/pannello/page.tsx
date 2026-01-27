@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import styles from "./pannello.module.css";
 
 type Booking = {
@@ -22,7 +22,7 @@ type Booking = {
 type StatusFilter = "TUTTE" | "NUOVA" | "CONFERMATA" | "CONSEGNATA" | "ANNULLATA";
 type ViewMode = "AUTO" | "TABELLA" | "CARD";
 
-// ✅ NUOVO: filtro tipo con 1 solo tasto (cicla)
+// ✅ filtro tipo (cicla)
 type TypeFilter = "TUTTI" | "CONSEGNA" | "RITIRO";
 
 type AnyJson = any;
@@ -116,11 +116,16 @@ function waTextCancel(b: Booking) {
   return `Ciao ${b.nome}, ❌ la tua prenotazione del ${formatDateIT(b.dataISO)} alle ${b.ora} è stata ANNULLATA. Se vuoi riprenotare scrivici qui.`;
 }
 
-/** ✅ FIX WhatsApp: più stabile di window.open su iOS/Android/PWA */
+/** WhatsApp stabile */
 function openWA(phoneRaw: string, text: string) {
   const phone = normalizePhone(phoneRaw).replace("+", "");
   if (!phone) return;
   const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+
+  // segna che quando torni vogliamo refresh subito
+  try {
+    sessionStorage.setItem("ar_pending_refresh", String(Date.now()));
+  } catch {}
 
   const a = document.createElement("a");
   a.href = url;
@@ -137,7 +142,7 @@ function toBool(v: any): boolean {
   return s === "true" || s === "1" || s === "yes" || s === "y" || s === "on";
 }
 
-/** Accetta tutte le forme possibili: bookings_open / bookingsOpen / settings.bookings_open / {key, bookingsOpen} / value ... */
+/** normalize settings payload */
 function normalizeBookingsOpen(payload: AnyJson): boolean | null {
   if (!payload) return null;
 
@@ -154,6 +159,36 @@ function normalizeBookingsOpen(payload: AnyJson): boolean | null {
   return null;
 }
 
+function normStatus(s?: string) {
+  const up = String(s || "").toUpperCase().trim();
+  if (up === "CONFERMATA" || up === "CONSEGNATA" || up === "ANNULLATA" || up === "NUOVA") return up;
+  return up || "NUOVA";
+}
+
+function statusPillStyle(st: string): CSSProperties {
+  const s = normStatus(st);
+
+  if (s === "CONFERMATA") {
+    return { background: "rgba(34,197,94,0.14)", border: "1px solid rgba(34,197,94,0.35)", color: "rgba(17,24,39,0.92)" };
+  }
+  if (s === "CONSEGNATA") {
+    return { background: "rgba(245,158,11,0.18)", border: "1px solid rgba(245,158,11,0.45)", color: "rgba(17,24,39,0.92)" };
+  }
+  if (s === "ANNULLATA") {
+    return { background: "rgba(239,68,68,0.14)", border: "1px solid rgba(239,68,68,0.35)", color: "rgba(17,24,39,0.92)" };
+  }
+  // NUOVA
+  return { background: "rgba(59,130,246,0.14)", border: "1px solid rgba(59,130,246,0.35)", color: "rgba(17,24,39,0.92)" };
+}
+
+function cardAccentColor(st: string) {
+  const s = normStatus(st);
+  if (s === "CONFERMATA") return "rgba(34,197,94,0.55)";
+  if (s === "CONSEGNATA") return "rgba(245,158,11,0.65)";
+  if (s === "ANNULLATA") return "rgba(239,68,68,0.55)";
+  return "rgba(59,130,246,0.55)";
+}
+
 export default function PannelloPrenotazioniPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string>("");
@@ -164,17 +199,13 @@ export default function PannelloPrenotazioniPage() {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
-  // ✅ NUOVO: filtro tipo (1 tasto che cicla)
   const [tipo, setTipo] = useState<TypeFilter>("TUTTI");
 
   const [soundOn, setSoundOn] = useState(true);
 
-  // ✅ Vista: AUTO / TABELLA / CARD
   const [viewMode, setViewMode] = useState<ViewMode>("AUTO");
 
-  /**
-   * ✅ AUTO: CARD su tablet+telefono, TABella su desktop grande
-   */
+  /** AUTO: CARD su tablet+telefono, TABELLA su desktop grande */
   const [autoCards, setAutoCards] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 1100px)");
@@ -189,15 +220,15 @@ export default function PannelloPrenotazioniPage() {
     }
   }, []);
 
-  // ✅ Prenotazioni aperte/chiuse (stato pubblico)
+  // ✅ settings prenotazioni aperte/chiuse
   const [bookingsOpen, setBookingsOpen] = useState<boolean | null>(null);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [settingsBusy, setSettingsBusy] = useState(false);
 
-  const loadSettings = async (opts?: { silent?: boolean }) => {
+  const loadSettings = async (opts?: { silent?: boolean; signal?: AbortSignal }) => {
     if (!opts?.silent) setSettingsLoading(true);
     try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
+      const res = await fetch("/api/settings", { cache: "no-store", signal: opts?.signal });
       const data: AnyJson = await safeJson(res);
       if (!data?.ok) {
         setBookingsOpen(null);
@@ -212,7 +243,7 @@ export default function PannelloPrenotazioniPage() {
     }
   };
 
-  /** POST robusto: prima admin (value), poi fallback */
+  /** POST robusto */
   const setBookingsOpenRemote = async (open: boolean) => {
     const tryPost = async (url: string, bodyObj: any) => {
       const r = await fetch(url, {
@@ -268,29 +299,10 @@ export default function PannelloPrenotazioniPage() {
     }
   };
 
-  useEffect(() => {
-    void loadSettings({ silent: true });
-    const onVis = () => {
-      if (!document.hidden) void loadSettings({ silent: true });
-    };
-    document.addEventListener("visibilitychange", onVis);
-
-    const id = window.setInterval(() => {
-      if (document.hidden) return;
-      void loadSettings({ silent: true });
-    }, 25_000);
-
-    return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      window.clearInterval(id);
-    };
-  }, []);
-
-  // evidenziazione oro solo per nuove arrivate mentre il pannello è aperto
+  // evidenziazione oro per nuove arrivate
   const seenRef = useRef<Set<string>>(new Set());
   const firstLoadDoneRef = useRef(false);
   const [goldIds, setGoldIds] = useState<Set<string>>(new Set());
-
   const [busyId, setBusyId] = useState<string>("");
 
   useEffect(() => {
@@ -305,7 +317,7 @@ export default function PannelloPrenotazioniPage() {
     } catch {}
   }, [soundOn]);
 
-  // ✅ carica/salva vista
+  // vista
   useEffect(() => {
     try {
       const v = window.localStorage.getItem("galax_admin_view_mode");
@@ -318,7 +330,7 @@ export default function PannelloPrenotazioniPage() {
     } catch {}
   }, [viewMode]);
 
-  // ✅ carica/salva tipo
+  // tipo
   useEffect(() => {
     try {
       const v = window.localStorage.getItem("galax_admin_type_filter");
@@ -331,14 +343,8 @@ export default function PannelloPrenotazioniPage() {
     } catch {}
   }, [tipo]);
 
-  const cycleViewMode = () => {
-    setViewMode((v) => (v === "AUTO" ? "TABELLA" : v === "TABELLA" ? "CARD" : "AUTO"));
-  };
-
-  // ✅ 1 tasto che cicla: TUTTI → CONSEGNA → RITIRO → TUTTI
-  const cycleTipo = () => {
-    setTipo((t) => (t === "TUTTI" ? "CONSEGNA" : t === "CONSEGNA" ? "RITIRO" : "TUTTI"));
-  };
+  const cycleViewMode = () => setViewMode((v) => (v === "AUTO" ? "TABELLA" : v === "TABELLA" ? "CARD" : "AUTO"));
+  const cycleTipo = () => setTipo((t) => (t === "TUTTI" ? "CONSEGNA" : t === "CONSEGNA" ? "RITIRO" : "TUTTI"));
 
   const maybeNotifyNewRows = (list: Booking[]) => {
     if (!firstLoadDoneRef.current) {
@@ -355,7 +361,6 @@ export default function PannelloPrenotazioniPage() {
     if (document.hidden) return;
 
     const ids = newOnes.filter((b) => (b.stato || "").toUpperCase() === "NUOVA").map((b) => makeBookingId(b));
-
     if (ids.length) {
       setGoldIds((prev) => {
         const next = new Set(prev);
@@ -379,7 +384,14 @@ export default function PannelloPrenotazioniPage() {
     });
   };
 
-  async function load(silent = false) {
+  // ✅ REFRESH SERIO (no overlap + abort + focus/visibility)
+  const inFlightRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+
+  async function load(opts?: { silent?: boolean; signal?: AbortSignal }) {
+    const silent = Boolean(opts?.silent);
+
     if (!silent) {
       setLoading(true);
       setErr("");
@@ -388,7 +400,7 @@ export default function PannelloPrenotazioniPage() {
     }
 
     try {
-      const r = await fetch("/api/admin/bookings", { method: "GET", cache: "no-store" });
+      const r = await fetch("/api/admin/bookings", { method: "GET", cache: "no-store", signal: opts?.signal });
       if (r.status === 401) {
         window.location.href = "/pannello/login";
         return;
@@ -444,6 +456,7 @@ export default function PannelloPrenotazioniPage() {
       maybeNotifyNewRows(parsed);
       cleanGoldIfNotNuova(parsed);
       setRows(parsed);
+      setLastSyncAt(Date.now());
     } catch (e: any) {
       setErr(e?.message || "Errore rete.");
       setRows([]);
@@ -452,53 +465,75 @@ export default function PannelloPrenotazioniPage() {
     }
   }
 
+  const refreshAll = async (opts?: { silent?: boolean }) => {
+    if (inFlightRef.current) return;
+
+    inFlightRef.current = true;
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    try {
+      await Promise.all([
+        load({ silent: true, signal: abortRef.current.signal }),
+        loadSettings({ silent: true, signal: abortRef.current.signal }),
+      ]);
+    } finally {
+      inFlightRef.current = false;
+      if (!opts?.silent) void load({ silent: true });
+    }
+  };
+
   async function logout() {
     await fetch("/api/admin/logout", { method: "POST" }).catch(() => null);
     window.location.href = "/pannello/login";
   }
 
   useEffect(() => {
-    load(false);
+    void refreshAll({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // refresh più veloce + refresh al ritorno dal tab WhatsApp
+  // ✅ refresh quando torni (WhatsApp / cambio tab / focus)
   useEffect(() => {
-    const onVis = () => {
-      if (!document.hidden) void load(true);
+    const onReturn = () => {
+      if (document.hidden) return;
+
+      // se veniamo da WA (o comunque da una action) refresh immediato
+      try {
+        const pending = sessionStorage.getItem("ar_pending_refresh");
+        if (pending) sessionStorage.removeItem("ar_pending_refresh");
+      } catch {}
+
+      void refreshAll({ silent: true });
     };
-    document.addEventListener("visibilitychange", onVis);
+
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
-      void load(true);
-    }, 30_000);
+      void refreshAll({ silent: true });
+    }, 60_000);
 
     return () => {
-      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
       window.clearInterval(id);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [soundOn]);
+  }, []);
 
-  /** ✅ FIX pagina bianca quando torni indietro da WhatsApp */
+  /** pageshow (iOS) */
   useEffect(() => {
-    const onPageShow = () => {
-      void load(true);
-    };
+    const onPageShow = () => void refreshAll({ silent: true });
     window.addEventListener("pageshow", onPageShow);
     return () => window.removeEventListener("pageshow", onPageShow);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     return rows.filter((r) => {
       if (status !== "TUTTE" && r.stato !== status) return false;
-
-      // ✅ filtro tipo (se non è TUTTI)
       if (tipo !== "TUTTI" && r.tipo !== tipo) return false;
-
       if (from && r.dataISO && r.dataISO < from) return false;
       if (to && r.dataISO && r.dataISO > to) return false;
       if (!qq) return true;
@@ -557,7 +592,9 @@ export default function PannelloPrenotazioniPage() {
         setErr(data?.error || "Errore aggiornando lo stato.");
         return;
       }
-      void load(true);
+
+      // riallineo “silenzioso”
+      void refreshAll({ silent: true });
     } catch (e: any) {
       setRows((old) => old.map((x) => (makeBookingId(x) === id ? { ...x, stato: prev } : x)));
       setErr(e?.message || "Errore rete aggiornando lo stato.");
@@ -581,9 +618,73 @@ export default function PannelloPrenotazioniPage() {
 
   const bookingsLabel = bookingsOpen === null ? "—" : bookingsOpen ? "APERTE" : "CHIUSE";
 
-  // ✅ label tasto tipo (pulito)
   const tipoLabel = tipo === "TUTTI" ? "Tutti" : tipo === "CONSEGNA" ? "Consegna" : "Ritiro";
   const tipoIcon = tipo === "TUTTI" ? "🔁" : tipo === "CONSEGNA" ? "🚚" : "🧺";
+
+  // ✅ stile “barbiere” per CARD
+  const lowPower = useMemo(() => {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+    return /iPad|Android/i.test(ua);
+  }, []);
+
+  const cardStyles = useMemo<Record<string, CSSProperties>>(() => {
+    const border = "rgba(15,23,42,0.12)";
+    const text = "rgba(17,24,39,0.92)";
+    const textSoft = "rgba(17,24,39,0.72)";
+    const shadow = lowPower ? "0 10px 24px rgba(0,0,0,0.10)" : "0 18px 50px rgba(0,0,0,0.12)";
+
+    return {
+      list: { display: "grid", gap: 10 },
+      card: {
+        borderRadius: 18,
+        background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.95))",
+        padding: 12,
+        position: "relative",
+        overflow: "hidden",
+        border: "2px solid rgba(0,0,0,0.55)",
+        boxShadow: shadow,
+      },
+      cardTop: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 8 },
+      namePill: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "8px 12px",
+        borderRadius: 999,
+        border: "1px solid rgba(15,23,42,0.14)",
+        background: "linear-gradient(135deg, rgba(255,255,255,0.96), rgba(248,250,252,0.92))",
+        color: "#111", // ✅ NOME NERO
+        fontWeight: 1100,
+        letterSpacing: 0.2,
+        boxShadow: "0 14px 30px rgba(0,0,0,0.10)",
+      },
+      pillStatus: { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "7px 10px", borderRadius: 999, fontWeight: 1100, fontSize: 12 },
+      grid: { display: "grid", gap: 10, gridTemplateColumns: "repeat(2, minmax(0, 1fr))" },
+      box: { borderRadius: 14, border: `1px solid ${border}`, background: "#ffffff", padding: "10px 10px" },
+      boxLabel: { fontSize: 11, fontWeight: 1100, opacity: 0.75, letterSpacing: 0.6, color: textSoft },
+      boxValue: { marginTop: 4, fontSize: 15, fontWeight: 1100, color: text },
+      full: { gridColumn: "1 / -1" },
+      boxesRow: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 },
+      smallPill: {
+        display: "inline-flex",
+        gap: 6,
+        alignItems: "center",
+        padding: "7px 10px",
+        borderRadius: 999,
+        border: `1px solid ${border}`,
+        background: "rgba(15,23,42,0.04)",
+        fontWeight: 950,
+        fontSize: 12,
+        color: "#111",
+      },
+      totBox: { textAlign: "center" },
+      totNum: { fontSize: 26, fontWeight: 1200, lineHeight: 1, color: "#111", marginTop: 2 },
+      totSub: { fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 4, color: textSoft },
+
+      actions: { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" },
+      subtle: { opacity: 0.9, color: text },
+    };
+  }, [lowPower]);
 
   return (
     <div className={`${styles.page} ar-panel`}>
@@ -593,10 +694,26 @@ export default function PannelloPrenotazioniPage() {
             <div className={`${styles.topRow} ar-topRow`}>
               <div className={styles.titleWrap}>
                 <div className={styles.logo} aria-hidden>
-                  📅
+                  🥩
                 </div>
                 <div>
-                  <h1 className={styles.h1}>Prenotazioni laboratorio arrosticini</h1>
+                  {/* ✅ titolo rosso leggibile */}
+                  <h1
+                    className={styles.h1}
+                    style={{
+                      color: "#dc2626",
+                      fontWeight: 1200,
+                      textShadow: "0 1px 0 rgba(255,255,255,0.55), 0 12px 26px rgba(0,0,0,0.18)",
+                    }}
+                  >
+                    Prenotazioni laboratorio arrosticini
+                  </h1>
+                  {lastSyncAt ? (
+                    <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900, marginTop: 4 }}>
+                      Ultimo aggiornamento:{" "}
+                      <b>{new Date(lastSyncAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</b>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
@@ -651,9 +768,11 @@ export default function PannelloPrenotazioniPage() {
                   🔔 Suono: <b>{soundOn ? "ON" : "OFF"}</b>
                 </button>
 
-                <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => load(false)} disabled={loading}>
+                {/* ✅ usa refreshAll */}
+                <button className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => void refreshAll()} disabled={loading}>
                   {loading ? "Aggiorno…" : "Aggiorna"}
                 </button>
+
                 <button className={styles.btn} onClick={logout}>
                   Logout
                 </button>
@@ -701,7 +820,6 @@ export default function PannelloPrenotazioniPage() {
                 <input className={styles.dateInput} type="date" value={to} onChange={(e) => setTo(e.target.value)} />
               </div>
 
-              {/* ✅ NUOVO: 1 tasto pulito per Tipo */}
               <button className={styles.btn} type="button" onClick={cycleTipo} title="Filtra per tipo (cicla)">
                 {tipoIcon} Tipo: <b>{tipoLabel}</b>
               </button>
@@ -714,7 +832,7 @@ export default function PannelloPrenotazioniPage() {
                   setFrom("");
                   setTo("");
                   setStatus("TUTTE");
-                  setTipo("TUTTI"); // ✅ reset anche tipo
+                  setTipo("TUTTI");
                 }}
               >
                 Reset
@@ -733,7 +851,7 @@ export default function PannelloPrenotazioniPage() {
           </div>
         ) : null}
 
-        {/* TABELLA */}
+        {/* TABELLA (lasciata com’è) */}
         <div className={styles.tableWrap} aria-busy={loading ? "true" : "false"} style={!showTable ? { display: "none" } : undefined}>
           <div className="ar-tableX">
             <table className={`${styles.table} ar-table`}>
@@ -793,7 +911,6 @@ export default function PannelloPrenotazioniPage() {
                           <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
                         </td>
 
-                        {/* ✅ FIX scatole: su schermi piccoli vedi sempre 50/100/200 */}
                         <td className={`${styles.td} ${styles.mono}`}>
                           <div className="ar-qty">
                             <span className="ar-qtyLabel">50:</span>
@@ -862,119 +979,135 @@ export default function PannelloPrenotazioniPage() {
           </div>
         </div>
 
-        {/* CARD */}
+        {/* CARD (rifatte stile “barbiere”) */}
         <div className={styles.mobileCards} style={!showCards ? { display: "none" } : undefined}>
           {loading ? (
             <div className={`${styles.mCard} ar-mCard`}>Caricamento…</div>
           ) : filtered.length === 0 ? (
             <div className={`${styles.mCard} ar-mCard`}>Nessun risultato.</div>
           ) : (
-            filtered.map((b, idx) => {
-              const id = makeBookingId(b);
-              const isGold = goldIds.has(id);
-              const isBusy = busyId === id;
+            <div style={cardStyles.list}>
+              {filtered.map((b, idx) => {
+                const id = makeBookingId(b);
+                const isGold = goldIds.has(id);
+                const isBusy = busyId === id;
 
-              const phone = normalizePhone(b.telefono);
-              const telHref = phone ? `tel:${phone}` : undefined;
-              const mapHref =
-                b.indirizzo && b.tipo === "CONSEGNA"
-                  ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
-                  : undefined;
+                const phone = normalizePhone(b.telefono);
+                const telHref = phone ? `tel:${phone}` : undefined;
+                const mapHref =
+                  b.indirizzo && b.tipo === "CONSEGNA"
+                    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(b.indirizzo)}`
+                    : undefined;
 
-              const statoUp = (b.stato || "").toUpperCase();
+                const statoUp = (b.stato || "").toUpperCase();
+                const accent = cardAccentColor(b.stato);
 
-              return (
-                <div key={`${id}-m-${idx}`} className={`${styles.mCard} ar-mCard ${isGold ? styles.mCardGold : ""}`}>
-                  <div className="arCardTop">
-                    <div className="arLeft">
-                      <p className={styles.mName}>{b.nome}</p>
+                const glow = isGold
+                  ? {
+                      outline: "3px solid rgba(245,158,11,0.55)",
+                      boxShadow: lowPower
+                        ? "0 0 0 6px rgba(245,158,11,0.10), 0 12px 28px rgba(0,0,0,0.10)"
+                        : "0 0 0 8px rgba(245,158,11,0.12), 0 18px 55px rgba(0,0,0,0.12)",
+                    }
+                  : null;
 
-                      <div className="arMetaRow">
-                        <span className="arChip">
-                          📅 <b>{formatDateIT(b.dataISO)}</b>
-                        </span>
-                        <span className="arChip">
-                          🕒 <b className={styles.mono}>{b.ora}</b>
-                        </span>
-                        <span className="arChip">
-                          📞 <b className={styles.mono}>{b.telefono}</b>
-                        </span>
+                return (
+                  <div
+                    key={`${id}-m-${idx}`}
+                    style={{
+                      ...cardStyles.card,
+                      borderLeft: `8px solid ${accent}`,
+                      ...(glow || {}),
+                      transition: "outline 220ms ease, box-shadow 220ms ease",
+                    }}
+                  >
+                    <div style={cardStyles.cardTop}>
+                      <span style={cardStyles.namePill}>{b.nome || "Cliente"}</span>
+                      <div style={{ ...cardStyles.pillStatus, ...statusPillStyle(b.stato) }}>{normStatus(b.stato)}</div>
+                    </div>
+
+                    <div style={cardStyles.grid}>
+                      <div style={cardStyles.box}>
+                        <div style={cardStyles.boxLabel}>DATA</div>
+                        <div style={cardStyles.boxValue}>{formatDateIT(b.dataISO) || "—"}</div>
+                      </div>
+                      <div style={cardStyles.box}>
+                        <div style={cardStyles.boxLabel}>ORA</div>
+                        <div style={cardStyles.boxValue}>{b.ora || "—"}</div>
+                      </div>
+
+                      <div style={cardStyles.box}>
+                        <div style={cardStyles.boxLabel}>TELEFONO</div>
+                        <div style={cardStyles.boxValue}>{b.telefono || "—"}</div>
+                      </div>
+                      <div style={cardStyles.box}>
+                        <div style={cardStyles.boxLabel}>TIPO</div>
+                        <div style={cardStyles.boxValue}>
+                          <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo || "—"}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ ...cardStyles.box, ...cardStyles.full }}>
+                        <div style={cardStyles.boxLabel}>SCATOLE</div>
+                        <div style={cardStyles.boxesRow}>
+                          <span style={cardStyles.smallPill}>
+                            50: <b>{b.s50}</b>
+                          </span>
+                          <span style={cardStyles.smallPill}>
+                            100: <b>{b.s100}</b>
+                          </span>
+                          <span style={cardStyles.smallPill}>
+                            200: <b>{b.s200}</b>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ ...cardStyles.box, ...cardStyles.full, ...cardStyles.totBox }}>
+                        <div style={cardStyles.boxLabel}>TOTALE</div>
+                        <div style={cardStyles.totNum}>{b.tot}</div>
+                        <div style={cardStyles.totSub}>pezzi</div>
+                      </div>
+
+                      <div style={{ ...cardStyles.box, ...cardStyles.full }}>
+                        <div style={cardStyles.boxLabel}>INDIRIZZO</div>
+                        <div style={{ ...cardStyles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{b.indirizzo || "—"}</div>
+                      </div>
+
+                      <div style={{ ...cardStyles.box, ...cardStyles.full }}>
+                        <div style={cardStyles.boxLabel}>NOTE</div>
+                        <div style={{ ...cardStyles.boxValue, fontWeight: 900, whiteSpace: "pre-wrap" }}>{b.note || "—"}</div>
                       </div>
                     </div>
 
-                    <div className="arRight">
-                      <div className="arBadges">
-                        <span className={badgeClass(b.stato)}>{b.stato}</span>
-                        <span className={badgeClass(b.tipo === "CONSEGNA" ? "CONSEGNA" : "RITIRO")}>{b.tipo}</span>
-                      </div>
+                    <div style={cardStyles.actions}>
+                      {telHref ? (
+                        <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
+                          📞 Chiama
+                        </a>
+                      ) : null}
+
+                      <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
+                        ✅ Conferma
+                      </button>
+
+                      <button className={`${styles.actionBtn} ar-actionDone`} style={consegnataBtnStyle} type="button" disabled={isBusy || statoUp !== "CONFERMATA"} onClick={() => updateStatus(b, "CONSEGNATA")}>
+                        📦 Consegnata
+                      </button>
+
+                      <button className={`${styles.actionBtn} ${styles.actionNo}`} type="button" disabled={isBusy} onClick={() => updateStatus(b, "ANNULLATA")}>
+                        ❌ Annulla
+                      </button>
+
+                      {mapHref ? (
+                        <a className={`${styles.actionBtn} ${styles.actionMap}`} href={mapHref} target="_blank" rel="noreferrer">
+                          📍 Maps
+                        </a>
+                      ) : null}
                     </div>
                   </div>
-
-                  <div className="arCardGrid">
-                    <div className="arBlock">
-                      <div className="arBlockTitle">Scatole</div>
-                      <div className="arBoxes">
-                        <span className="arBoxPill">
-                          50: <b>{b.s50}</b>
-                        </span>
-                        <span className="arBoxPill">
-                          100: <b>{b.s100}</b>
-                        </span>
-                        <span className="arBoxPill">
-                          200: <b>{b.s200}</b>
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="arBlock arTot">
-                      <div className="arBlockTitle">Totale</div>
-                      <div className="arTotNum">{b.tot}</div>
-                      <div className="arTotSub">pezzi</div>
-                    </div>
-
-                    <div className="arBlock arFull">
-                      <div className="arBlockTitle">Indirizzo</div>
-                      <div className="arText">{b.indirizzo || "—"}</div>
-                    </div>
-
-                    <div className="arBlock arFull">
-                      <div className="arBlockTitle">Note</div>
-                      <div className="arText">{b.note || "—"}</div>
-                    </div>
-                  </div>
-
-                  <div className={`${styles.actionsMobile} arActions`}>
-                    {telHref ? (
-                      <a className={`${styles.actionBtn} ${styles.actionCall}`} href={telHref}>
-                        📞 Chiama
-                      </a>
-                    ) : (
-                      <span />
-                    )}
-
-                    <button className={`${styles.actionBtn} ${styles.actionOk}`} type="button" disabled={isBusy || statoUp !== "NUOVA"} onClick={() => updateStatus(b, "CONFERMATA")}>
-                      ✅ Conferma
-                    </button>
-
-                    <button className={`${styles.actionBtn} ar-actionDone`} style={consegnataBtnStyle} type="button" disabled={isBusy || statoUp !== "CONFERMATA"} onClick={() => updateStatus(b, "CONSEGNATA")}>
-                      📦 Consegnata
-                    </button>
-
-                    <button className={`${styles.actionBtn} ${styles.actionNo}`} type="button" disabled={isBusy} onClick={() => updateStatus(b, "ANNULLATA")}>
-                      ❌ Annulla
-                    </button>
-
-                    {mapHref ? (
-                      <a className={`${styles.actionBtn} ${styles.actionMap}`} href={mapHref} target="_blank" rel="noreferrer">
-                        📍 Maps
-                      </a>
-                    ) : (
-                      <span />
-                    )}
-                  </div>
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
 
@@ -991,62 +1124,15 @@ export default function PannelloPrenotazioniPage() {
         .ar-panel .ar-table td{ font-size: 13px; line-height: 1.25; }
         .ar-panel .ar-wrap{ max-width: 320px; white-space: normal; word-break: break-word; }
 
-        /* ✅ FIX scatole: su schermi piccoli fai vedere sempre l’etichetta */
         .ar-qty{ display:flex; align-items:center; gap:6px; }
         .ar-qtyLabel{ opacity:.7; font-weight: 950; }
         @media (min-width: 1101px){
           .ar-qtyLabel{ display:none; }
         }
 
-        /* CARD */
-        .ar-mCard{ padding: 12px; }
-        .arCardTop{ display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-        .arMetaRow{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
-        .arChip{
-          display:inline-flex; align-items:center; gap:6px;
-          padding:6px 10px; border-radius:999px;
-          border:1px solid rgba(15,23,42,0.14);
-          background: rgba(15,23,42,0.04);
-          font-weight: 800; font-size: 12px;
-        }
-        .arBadges{ display:grid; gap:8px; justify-items:end; }
-
-        .arCardGrid{
-          margin-top: 12px;
-          display:grid;
-          grid-template-columns: 1fr;
-          gap:10px;
-        }
-        .arBlock{
-          border-radius: 14px;
-          border:1px solid rgba(15,23,42,0.12);
-          background: rgba(244,246,251,0.8);
-          padding:10px 12px;
-        }
-        .arBlockTitle{ font-size: 12px; font-weight: 950; opacity: .8; margin-bottom: 6px; }
-        .arText{ font-weight: 900; line-height: 1.25; word-break: break-word; }
-        .arBoxes{ display:flex; flex-wrap:wrap; gap:8px; }
-        .arBoxPill{
-          display:inline-flex; gap:6px; align-items:center;
-          padding:7px 10px; border-radius: 999px;
-          border:1px solid rgba(15,23,42,0.14);
-          background: rgba(255,255,255,0.95);
-          font-weight: 950;
-        }
-        .arTot{ text-align:center; }
-        .arTotNum{ font-size: 22px; font-weight: 950; line-height: 1; }
-        .arTotSub{ font-size: 12px; opacity: .75; font-weight: 900; margin-top: 4px; }
-
-        .arActions{ grid-template-columns: repeat(3, 1fr); }
-        @media (max-width: 760px){
-          .arActions{ grid-template-columns: 1fr; }
-        }
-
-        @media (min-width: 761px) and (max-width: 1100px){
-          .arCardGrid{ grid-template-columns: 1.2fr .8fr; }
-          .arFull{ grid-column: 1 / -1; }
-          .arTot{ display:flex; flex-direction:column; justify-content:center; }
-          .arTotNum{ font-size: 24px; }
+        @media (max-width: 760px) {
+          /* Card grid in 1 col su mobile */
+          .ar-panel .mm-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
